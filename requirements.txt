@@ -1,0 +1,5 @@
+manim==0.22.1
+numpy
+Pillow
+matplotlib
+scipy

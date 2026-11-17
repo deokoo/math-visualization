@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Manim 渲染产物
+media/
+*.mp4
+*.wav
+*.m4a
+
+# 大体积二进制依赖（运行时由系统提供）
+ffmpeg.exe
+
+# 中间分析产物
+frame_*.png
+params.csv
+*.log
+
+# 系统
+.DS_Store
+Thumbs.db
