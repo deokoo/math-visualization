@@ -10,8 +10,8 @@ from manim import *
 
 import gaussian_scene as gs
 
-ROOT = Path(r"C:/Users/admin/WorkBuddy/2026-11-17-10-23-42")
-PARAMS_CSV = ROOT / "frame_analysis" / "params.csv"
+ROOT = Path(__file__).resolve().parent
+PARAMS_CSV = ROOT / "params.csv"
 
 config.pixel_width = 1080
 config.pixel_height = 1350
@@ -179,7 +179,7 @@ class GaussianClean(Scene):
         # ------------------------------------------------------------------
         # 静态标题
         # ------------------------------------------------------------------
-        title = text_img("matheorems", 52, C_TEXT, 0.28).move_to([0, 4.35, 0])
+        title = text_img("AIMaker-Lab", 52, C_TEXT, 0.28).move_to([0, 4.35, 0])
         cursor = Line(UP * 0.16, DOWN * 0.16, color=M_TEXT, stroke_width=2.5).move_to([0, 4.35, 0])
         cursor.set_opacity(0)
 

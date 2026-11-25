@@ -185,7 +185,7 @@ class GaussianExact(Scene):
         # ------------------------------------------------------------------
         # 标题（原片 16.15s 附近短暂消失）
         # ------------------------------------------------------------------
-        title = serif("matheorems", 26, C_TITLE, height=0.17)
+        title = serif("AIMaker-Lab", 26, C_TITLE, height=0.17)
         title.move_to([0, 3.06, 0])
         cursor = Line(UP * 0.09, DOWN * 0.09, color=C_TITLE, stroke_width=3)
         cursor.move_to([0, 3.06, 0]).set_opacity(0)
