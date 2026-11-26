@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""雅可比行列式成片专用配乐 —— 「HARMONIC-FMixRetro」
+"""雅可比行列式成片专用配乐（用户反馈重做版）——「MELLOW-EbMixRhodes」
 
-系列铁律：每部动画的配乐必须彼此不同（调性 / 音色 / 结构至少换两样）。
-本片三样全换：
-  - 调性：F 混合利底亚（Mixolydian，含 ♭7=E），此前未用
-  - 音色：谐波泛音列合成器（1..12 次泛音 1/n^1.45 + 缓慢漂移）、
-          音乐锯（连续滑音 + 弓噪）、打字机键敲击（短噪声 + 金属共振），均为新音色
-  - 结构：47/8 拍 + 素数乘积间隔（2×3=6、3×5=15、5×7=35、2×7=14 半音）+ 反向变速段落
-全程不循环、持续演进。
+用户反馈初版（谐波泛音列 + 音乐锯 + 打字机敲击）不好听，改为暖色、柔和、
+有旋律感的版本；调性 / 音色 / 结构三样全部更换，仍满足「每片配乐不同」铁律：
+  - 调性：Eb 混合利底亚（Eb2=77.78），此前未用
+  - 音色：FM 电钢琴（Rhodes，带颤音与微合唱）+ 竖琴泛音琶音 + 软刷镲，均为新音色
+  - 结构：5/7/11/6/9/13/8/10 非对称乐句分组 + 逐乐句移调漂移，无循环、无机械节拍
+全程持续演进，无打字机噪声、无音乐锯滑音。
 
 用法：python add_bgm.py [input.mp4] [output.mp4]
 """
@@ -30,14 +29,10 @@ if FFMPEG is None:
 BGM = HERE / "bgm.wav"
 
 SR = 44100
-ROOT = 87.3071                              # F2
-SCALE = [0, 2, 4, 5, 7, 9, 10]              # F Mixolydian
-SEED = 261126
-EIGHTH = 0.105
-# 素数乘积间隔（半音），逐项递减/回卷，不与旧片的素数间隔或分形音程相同
-PRODUCTS = [6, 15, 35, 14, 21, 10, 28, 4]
-# 反向变速：每个段落的时间伸缩序列在相邻段落间正反交替
-RETRO = [1.00, 0.78, 0.62, 0.50, 0.62, 0.78, 1.00]
+ROOT = 77.7817                              # Eb2
+SCALE = [0, 2, 4, 5, 7, 9, 10]              # Eb Mixolydian
+SEED = 2611262
+PHRASES = [5, 7, 11, 6, 9, 13, 8, 10]       # 非对称乐句长度（音数），不循环
 
 _BASE = Path("C:/Users/admin/WorkBuddy")
 
@@ -62,95 +57,109 @@ def pitch(deg):
     return ROOT * 2 ** (semi / 12)
 
 
-def harmonic_pad(note_f0, loc, amp):
-    """谐波泛音列合成：1..12 次泛音，幅度 1/n^1.45，带慢漂移。"""
+def rhodes(f0, loc, amp, rng):
+    """温暖 FM 电钢琴：衰减调制指数 + 双声部微合唱 + 慢颤音。"""
+    env = (1.0 - np.exp(-loc / 0.012)) * np.exp(-loc * 1.55)
+    mod = np.sin(2 * np.pi * (2.0 * f0) * loc + 0.35) * np.exp(-loc * 3.2)
+    carrier = np.sin(2 * np.pi * f0 * loc + 1.55 * mod)
+    chorus = (np.sin(2 * np.pi * f0 * 1.0027 * loc)
+              + np.sin(2 * np.pi * f0 * 0.9973 * loc)) * 0.5
+    trem = 0.90 + 0.10 * np.sin(2 * np.pi * 4.3 * loc + 0.6)
+    return amp * env * trem * (0.62 * carrier + 0.38 * chorus)
+
+
+def harp(f0, loc, amp):
+    """竖琴泛音琶音：轻快起音、指数衰减、轻微非谐波。"""
+    env = (1.0 - np.exp(-loc / 0.005)) * np.exp(-loc * 2.6)
     out = np.zeros_like(loc)
-    for k in range(1, 13):
-        drift = 1.0 + 0.0042 * k * np.sin(2 * np.pi * (0.031 * k + 0.07) * loc)
-        amp_k = (1.0 / k ** 1.45) * (1.0 + 0.18 * np.sin(2 * np.pi * 0.019 * k * loc))
-        out += amp_k * np.sin(2 * np.pi * note_f0 * k * drift * loc + 0.21 * k)
-    return amp * out / 2.2
+    for k in range(1, 5):
+        fk = f0 * k * (1.0 + 0.0006 * k * k)
+        out += (1.0 / k ** 1.7) * np.sin(2 * np.pi * fk * loc + 0.17 * k)
+    return amp * env * out / 1.55
+
+
+def bass(f0, loc, amp):
+    env = (1.0 - np.exp(-loc / 0.02)) * np.exp(-loc * 1.1)
+    return amp * env * (np.sin(2 * np.pi * f0 * loc)
+                        + 0.22 * np.sin(4 * np.pi * f0 * loc))
+
+
+def brush(loc, amp, rng):
+    """软刷镲：低幅度噪声，经一阶平滑去掉刺耳高频。"""
+    x = rng.normal(size=len(loc))
+    y = np.zeros_like(x)
+    prev = 0.0
+    for i, v in enumerate(x):
+        prev += 0.17 * (v - prev)
+        y[i] = prev
+    env = np.clip(loc / 0.09, 0, 1) * np.exp(-loc * 5.0)
+    return amp * y * env
+
+
+def add_note(audio, start, dur, fn, *args):
+    s0, s1 = int(start * SR), min(int((start + dur) * SR), len(audio))
+    if s1 <= s0:
+        return
+    loc = np.arange(s1 - s0) / SR
+    audio[s0:s1] += fn(*args, loc)
 
 
 def make_bgm(duration: float, path: Path) -> None:
     n = int(SR * duration)
-    t = np.arange(n) / SR
     audio = np.zeros(n, dtype=np.float64)
-    U = t / duration
     rng = np.random.default_rng(SEED)
 
-    # ---- 1) 谐波泛音列 pad：47/8 拍、素数乘积间隔、反向变速段落 ----
-    pos, deg, step = 0.30, 5, 0
-    bar = 47 * EIGHTH
-    section = 0
-    while pos < duration - 0.9:
-        sec_pos = (pos % bar) / bar
-        ridx = int(sec_pos * len(RETRO)) % len(RETRO)
-        ratio = RETRO[ridx] if section % 2 == 0 else RETRO[-1 - ridx]
-        prod = PRODUCTS[step % len(PRODUCTS)]
-        deg += max(1, round(prod / 3)) * (1 if (step // len(PRODUCTS)) % 2 == 0 else -1)
-        deg = int(np.clip(deg, -4, 30))
-        f0 = pitch(deg) * 2
-        life = 0.95 + 0.55 * ((step * 3) % 7) / 6
-        s0, s1 = int(pos * SR), min(int((pos + life) * SR), n)
-        if s1 <= s0:
-            break
-        loc = np.arange(s1 - s0) / SR
-        env = np.clip(loc / 0.22, 0, 1) * np.clip((life - loc) / 0.45, 0, 1) ** 1.2
-        audio[s0:s1] += 0.075 * env * harmonic_pad(f0, loc, 1.0)
-        pos += EIGHTH * ratio * (2.4 + 0.35 * ((step * 5) % 4))
-        step += 1
-        section = int(pos / bar)
+    # 非对称乐句：每句一个调式根音，铺 Rhodes 和弦 + 竖琴琶音 + 低音 + 软刷镲
+    pos = 0.25
+    pi = 0
+    root_deg = 0
+    while pos < duration - 1.2:
+        plen = PHRASES[pi % len(PHRASES)]
+        chord = [root_deg + d for d in (0, 2, 4, 6)]
+        chord_life = min(1.55 + 0.09 * (plen % 5), duration - pos)
+        for k, deg in enumerate(chord):
+            add_note(audio, pos + 0.045 * k, chord_life,
+                     lambda f, a, loc_: rhodes(f, loc_, a, rng),
+                     pitch(deg) * 2, 0.030)
+        add_note(audio, pos, min(1.8, duration - pos),
+                 lambda f, a, loc_: bass(f, loc_, a), pitch(root_deg), 0.070)
+        # 琶音向上再折返，节奏在句内逐步收紧
+        arp = chord[1:] + chord[-2:0:-1]
+        for j, deg in enumerate(arp):
+            gap = 0.19 - 0.014 * j + 0.004 * (j % 3)
+            t0 = pos + 0.16 + j * gap
+            add_note(audio, t0, 1.25,
+                     lambda f, a, loc_: harp(f, loc_, a),
+                     pitch(deg) * 4, 0.052)
+        add_note(audio, pos, 0.55,
+                 lambda a, loc_: brush(loc_, a, rng), 0.012)
+        pos += plen * 0.235 + 0.30 + 0.045 * (pi % 4)
+        root_deg += (5 if pi % 3 == 0 else 3) % len(SCALE)
+        root_deg = int(np.clip(root_deg, -3, 24))
+        pi += 1
 
-    # ---- 2) 音乐锯：连续滑音主旋律，音高随进度缓慢上弯再回落 ----
-    for k, a in enumerate((3.6, 8.9, 14.2, 18.6)):
-        life = 2.1 + 0.6 * (k % 3)
-        s0, s1 = int(a * SR), min(int((a + life) * SR), n)
-        loc = np.arange(s1 - s0) / SR
-        if len(loc) < 10:
-            continue
-        base = pitch(7 + (k * 3) % 7) * 4
-        bend = 1.0 + 0.022 * np.sin(np.pi * loc / life) * (1 if k % 2 == 0 else -1)
-        ph = 2 * np.pi * np.cumsum(base * bend * (1 + 0.0035 * np.sin(2 * np.pi * 5.7 * loc))) / SR
-        env = np.clip(loc / 0.32, 0, 1) * np.clip((life - loc) / 0.6, 0, 1)
-        bow = rng.normal(size=len(loc))
-        bow *= 0.18 * np.clip(loc / 0.4, 0, 1)
-        audio[s0:s1] += 0.036 * env * (np.sin(ph) + 0.28 * np.sin(2 * ph) + bow)
+    # 柔和高频滚降：避免刺耳，保留暖色
+    spec = np.fft.rfft(audio)
+    freqs = np.fft.rfftfreq(n, 1.0 / SR)
+    spec /= 1.0 + (freqs / 2600.0) ** 4
+    audio = np.fft.irfft(spec, n)
 
-    # ---- 3) 打字机键敲击：极短噪声脉冲 + 2.7kHz 金属共振 ----
-    click_pos = 1.1
-    ci = 0
-    while click_pos < duration - 0.4:
-        life = 0.085
-        s0, s1 = int(click_pos * SR), min(int((click_pos + life) * SR), n)
-        loc = np.arange(s1 - s0) / SR
-        burst = rng.normal(size=len(loc)) * np.exp(-loc * 42.0)
-        ring = np.sin(2 * np.pi * (2700 + 180 * (ci % 5)) * loc) * np.exp(-loc * 26.0)
-        audio[s0:s1] += 0.040 * (0.6 * burst + 0.4 * ring)
-        gap = 0.31 + 0.17 * ((ci * 7) % 5) / 4 + 0.06 * (1 - U[int(click_pos * SR)] if int(click_pos * SR) < n else 0)
-        click_pos += gap
-        ci += 1
+    # 缓慢演进的呼吸包络（不是固定和弦循环，也不是分页静默）
+    t = np.arange(n) / SR
+    audio *= 0.90 + 0.10 * np.sin(2 * np.pi * 0.055 * t + 0.3) ** 2
 
-    # ---- 4) 分页式静默：三处短暂留白，随后音量渐回 ----
-    gate = np.ones(n)
-    for a, b in ((5.05, 5.42), (12.30, 12.70), (18.05, 18.40)):
-        s0, s1 = int(a * SR), min(int(b * SR), n)
-        gate[s0:s1] = np.linspace(1, 0.015, s1 - s0) * np.linspace(0.015, 1, s1 - s0)
-    audio *= gate
-    audio *= 0.88 + 0.16 * np.sin(2 * np.pi * 0.071 * U) ** 2
-
-    audio += 0.00030 * rng.normal(size=n)
-    fi, fo = int(0.7 * SR), int(1.8 * SR)
+    fi, fo = int(0.8 * SR), int(1.6 * SR)
     audio[:fi] *= np.linspace(0, 1, fi)
     audio[-fo:] *= np.linspace(1, 0, fo)
+    audio += 0.00020 * rng.normal(size=n)
     audio /= max(1e-9, float(np.max(np.abs(audio))))
-    audio *= 0.80
+    audio *= 0.72
     with wave.open(str(path), "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(SR)
         wf.writeframes((audio * 32767).astype("<i2").tobytes())
-    print(f"BGM（HARMONIC / F-Mixolydian-Retro，专用签名）: {path} ({duration:.1f}s)")
+    print(f"BGM（MELLOW / Eb-Mixolydian-Rhodes，重做版）: {path} ({duration:.1f}s)")
 
 
 def _load_mono(path: Path, limit_s=6.0):

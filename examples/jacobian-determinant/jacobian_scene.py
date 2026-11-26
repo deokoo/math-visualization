@@ -253,11 +253,11 @@ def make_base() -> Image.Image:
     for i in range(0, 13):
         u = UL + (UR - UL) * i / 12
         a, b = left_px(u, 0.0), left_px(u, VMAX)
-        d.line([a, b], fill=(*C_GRID_DIM, 105), width=1)
+        d.line([a, b], fill=(*C_GRID, 150), width=1)
     for j in range(0, 13):
         v = VMAX * j / 12
         a, b = left_px(UL, v), left_px(UR, v)
-        d.line([a, b], fill=(*C_GRID_DIM, 105), width=1)
+        d.line([a, b], fill=(*C_GRID, 150), width=1)
     d.text((30, RES_H - 34), "rectangle  du x dv", font=PIX_FONT, fill=(*C_GRID_DIM, 255))
     d.text((526, RES_H - 34), "T(u,v) = (u cos v, u sin v)",
            font=PIX_FONT, fill=(*C_GRID_DIM, 255))
@@ -313,11 +313,12 @@ class JacobianPlane(ImageMobject):
         for i in range(1, 12):
             u = UL + (UR - UL) * i / 12
             pts = [right_px(u, VMAX * k / 80, s) for k in range(81)]
-            d.line(pts, fill=(*C_GRID_DIM, 148), width=1)
+            alpha = 195 if i % 3 == 0 else 160
+            d.line(pts, fill=(*C_GRID, alpha), width=1)
         for j in range(0, 12):
             v = VMAX * j / 12
             pts = [right_px((UR - UL) * k / 60, v, s) for k in range(61)]
-            d.line(pts, fill=(*C_GRID_DIM, 148), width=1)
+            d.line(pts, fill=(*C_GRID, 165), width=1)
         if phase != "intro":
             d.text((RCX + RSCALE * 2.45, RCY - 14), "r", font=PIX_FONT_B,
                    fill=(*C_GRID, 220))
