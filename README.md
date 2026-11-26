@@ -1,6 +1,6 @@
 # Math Visualization
 
-一个用 Python 生成数学动画的代码集。目前收录十六个案例：
+一个用 Python 生成数学动画的代码集。目前收录十七个案例：
 
 1. **高斯积分** `∫e^(−x²)dx = √π` 极坐标证明的完整复刻
 2. **复指数映射** `w = eᶻ` 的共形映射可视化
@@ -18,10 +18,11 @@
 14. **曲率与曲率圆** `κ=|dα/ds|`、`R=1/κ`：半径连出圆心，曲率圆与曲线二阶接触
 15. **拉普拉斯变换** `f(t)e^(-st)` 的面积累积成 `F(s)`：极点与收敛域的可视化
 16. **高斯散度定理** 六个面的 `F·n` 通量之和 = 内部 `∇·F` 的体积分：移动源点总和不变
+17. **雅可比行列式与换元** 矩形网格弯成极坐标网格：偏导边向量张成的平行四边形给出局部面积放大率 `J=r`，于是 `dx dy = r dr dθ`
 
 后续会持续加入更多数学可视化主题（线性代数、微分方程、离散数学、组合数学等），每日一篇。
 
-> A collection of Python-generated math animations: Gaussian integral proof, conformal mapping `w = e^z`, Fourier series square-wave synthesis, Taylor expansion of sin x, the brachistochrone problem, cellular automata (emergence from local rules), Dijkstra's shortest-path algorithm, ODE phase portraits (how trace and determinant classify equilibria), binary search (locating a target among 500 million sorted values in 29 halving steps), Green's theorem (circulation along a closed boundary equals the sum of curl over its enclosed region), gradient & directional derivative (zero change along a contour, steepest ascent along ∇f, with D_u f = |∇f| cos θ), surface integrals (flux through a parametrized surface, reduced to a double integral over its parameter domain), Stokes' theorem (circulation along a closed boundary equals curl flux through any spanning surface), curvature & the osculating circle (`κ=|dα/ds|`, `R=1/κ` and second-order contact), the Laplace transform (accumulated area of `f(t)e^(-st)` becomes `F(s)`, with pole and ROC), and the divergence theorem (sum of `F·n` flux over six faces equals the volume integral of `∇·F`, invariant under moving the source). One new visualization every day.
+> A collection of Python-generated math animations: Gaussian integral proof, conformal mapping `w = e^z`, Fourier series square-wave synthesis, Taylor expansion of sin x, the brachistochrone problem, cellular automata (emergence from local rules), Dijkstra's shortest-path algorithm, ODE phase portraits (how trace and determinant classify equilibria), binary search (locating a target among 500 million sorted values in 29 halving steps), Green's theorem (circulation along a closed boundary equals the sum of curl over its enclosed region), gradient & directional derivative (zero change along a contour, steepest ascent along ∇f, with D_u f = |∇f| cos θ), surface integrals (flux through a parametrized surface, reduced to a double integral over its parameter domain), Stokes' theorem (circulation along a closed boundary equals curl flux through any spanning surface), curvature & the osculating circle (`κ=|dα/ds|`, `R=1/κ` and second-order contact), the Laplace transform (accumulated area of `f(t)e^(-st)` becomes `F(s)`, with pole and ROC), and the divergence theorem (sum of `F·n` flux over six faces equals the volume integral of `∇·F`, invariant under moving the source), and the Jacobian determinant & change of variables (a rectangular grid bends into polar coordinates; the parallelogram spanned by the two derivative vectors gives the local area scale `J=r`, hence `dx dy = r dr dθ`). One new visualization every day.
 
 ## 技术栈 / Toolchain
 
