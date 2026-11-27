@@ -172,17 +172,18 @@ class NavierSolver:
 
 
 class SchrodingerSolver:
-    """ 3D gaussian wavepacket |psi| surface, evolving width/centre. """
-    def surface(self, t):
-        s = 0.20 + 0.11*t
-        xc = -0.65 + 0.20*t
-        xs = np.linspace(-1, 1, 46)
-        ys = np.linspace(-1, 1, 46)
+    """ free gaussian wavepacket: centre advances, width spreads -> glowing |psi|^2 cloud. """
+    def density(self, t, n=120):
+        xs = np.linspace(-1, 1, n)
+        ys = np.linspace(-1, 1, n)
         X, Y = np.meshgrid(xs, ys, indexing="ij")
-        amp = np.exp(-(((X-xc)**2 + Y**2)/(2*s*s)))
-        phase = np.cos(6*(X-xc) - 2.6*t)
-        Z = amp*phase
-        return X, Y, Z
+        tp = t % 3.6                  # re-emitted packet, like the wave panel
+        s = 0.15 + 0.10*tp            # packet spreads while travelling
+        xc = -0.72 + 0.40*tp          # packet travels left -> right
+        env2 = np.exp(-(((X-xc)**2 + Y**2)/(s*s)))
+        fringe = 0.5 + 0.5*np.cos(12*(X-xc) - 3.0*t)   # internal wave fringes
+        dens = env2 * (0.7 + 0.3*fringe)
+        return dens, xc, s
 
 
 class BeamSolver:
@@ -346,18 +347,25 @@ def beam_panel(im, d, box, sim, t, gy0):
     cx, cy = x0+42, (gy0+y1)//2
     L = x1-x0-84
     x, y = sim.beam.shape(t)
-    # wall
-    d.rectangle((cx-8, gy0+16, cx, y1-30), fill=(70, 72, 76))
-    # mesh: longitudinal lines across width
-    for w in np.linspace(-0.32, 0.32, 7):
-        pts = [(cx + xi*L, cy + yi*(y1-gy0)*0.7 + w*(y1-gy0)*0.34)
-               for xi, yi in zip(x, y)]
-        d.line(pts, fill=GOLD if abs(w) < 0.01 else (168, 122, 62), width=1)
-    for xi in np.linspace(0, 1, 13):
-        yi = np.interp(xi, x, y)
-        d.line([(cx+xi*L, cy+yi*(y1-gy0)*0.7-0.32*(y1-gy0)*0.34),
-                (cx+xi*L, cy+yi*(y1-gy0)*0.7+0.32*(y1-gy0)*0.34)],
-               fill=(120, 92, 56), width=1)
+    # fixed wall with hatch
+    d.rectangle((cx-9, gy0+18, cx, y1-34), fill=(74, 76, 80))
+    for hy in range(gy0+18, y1-34, 10):
+        d.line([(cx-9, hy), (cx, hy+7)], fill=(120, 122, 128), width=1)
+    # ghost poses (fading vibration history)
+    for dt, a in ((0.55, 90), (0.30, 120), (0.14, 150)):
+        _, yh = sim.beam.shape(t-dt)
+        pts = [(cx+xi*L, cy - yi*(y1-gy0)*0.78) for xi, yi in zip(x, yh)]
+        d.line(pts, fill=(a, int(a*0.72), int(a*0.34)), width=2)
+    # solid beam body as a tapered ribbon (top + bottom edges)
+    top = [(cx+xi*L, cy - yi*(y1-gy0)*0.78 - 4) for xi, yi in zip(x, y)]
+    bot = [(cx+xi*L, cy - yi*(y1-gy0)*0.78 + 4) for xi, yi in zip(x, y)][::-1]
+    d.polygon(top+bot, fill=(178, 132, 64))
+    d.line(top, fill=GOLD, width=2)
+    d.line(bot[::-1], fill=(120, 88, 44), width=1)
+    # free-end tip marker
+    tipy = cy - y[-1]*(y1-gy0)*0.78
+    d.ellipse((cx+L-5, tipy-5, cx+L+5, tipy+5), fill=(250, 214, 130))
+    cn_text(im, d, "悬臂梁 · 一阶振型振动", (x0+14, y1-28), 14, DIMTEXT)
 
 
 def rd_panel(im, d, box, sim, gy0):
@@ -370,24 +378,16 @@ def rd_panel(im, d, box, sim, gy0):
 
 def schrod_panel(im, d, box, sim, t, gy0):
     x0, y0, x1, y1 = box
-    cx, cy = (x0+x1)//2, (gy0+y1)//2
-    rx, ry = (x1-x0)/2-22, (y1-gy0)/2-8
-    X, Y, Z = sim.schrod.surface(t)
-    def proj(i, j):
-        xx, yy, zz = X[i, j], Y[i, j], Z[i, j]
-        px = cx + (xx-yy)*0.46*rx
-        py = cy + (xx+yy)*0.22*ry - zz*0.42*ry
-        return px, py
-    n = X.shape[0]
-    for i in range(0, n, 3):
-        pts = [proj(i, j) for j in range(n)]
-        d.line(pts, fill=(110, 124, 146), width=1)
-    for j in range(0, n, 3):
-        pts = [proj(i, j) for i in range(n)]
-        d.line(pts, fill=(110, 124, 146), width=1)
-    # highlight ridge
-    jmid = n//2
-    d.line([proj(i, jmid) for i in range(n)], fill=CYAN, width=2)
+    dens, xc, s = sim.schrod.density(t)
+    rgb = map_color(dens, 0.0, 1.0, (18, 24, 62), (108, 224, 236))
+    cloud = Image.fromarray(rgb, "RGB").resize((x1-x0-16, y1-gy0-8), Image.BILINEAR)
+    im.paste(cloud, (x0+8, gy0))
+    # travel direction arrow at the base
+    ay = y1-26
+    ax0, ax1 = x0+18, x1-24
+    d.line([(ax0, ay), (ax1, ay)], fill=(120, 130, 140), width=1)
+    d.line([(ax1-8, ay-4), (ax1, ay), (ax1-8, ay+4)], fill=(120, 130, 140), width=1)
+    cn_text(im, d, "|ψ|²  概率云前进并展宽", (x0+14, y1-46), 14, DIMTEXT)
 
 
 # ---------------- subtitles (one sentence per scene, evolving) ----------------
