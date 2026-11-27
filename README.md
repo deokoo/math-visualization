@@ -4,7 +4,7 @@
 
 > Python/Manim math animations: one new visualization every day, rendered offline without LaTeX, each with its own non-looping synthesized score.
 
-## 已收录作品（19）
+## 已收录作品（20）
 
 主表只做索引，**每个案例的详细说明（公式链、分镜、技术要点、运行命令）都在各自的 `examples/<主题>/README.md` 里**，新增案例时只加一行，主 README 不会越写越长。
 
@@ -29,6 +29,7 @@
 | 17 | 雅可比行列式与换元 | 网格弯成极坐标，`J=r` 给出局部面积放大率 | [README](examples/jacobian-determinant/README.md) |
 | 18 | 拉格朗日中值定理 | 平移割线至与曲线相切，`f'(ξ)=k` 给出平均变化率 | [README](examples/mean-value-theorem/README.md) |
 | 19 | 七个偏微分方程 | 八面板仪表盘：热扩散、波动分裂、涡旋脱落、斑图自组织同时现场求解 | [README](examples/pde-dashboard/README.md) |
+| 20 | 混沌与动力系统 | 八面板仪表盘：洛伦兹蝴蝶、倍周期分岔、极限环、双摆、曼德博分形同时演化 | [README](examples/chaos-dashboard/README.md) |
 
 后续会持续加入更多数学可视化主题（线性代数、微分方程、离散数学、组合数学等），每日一篇。
 
