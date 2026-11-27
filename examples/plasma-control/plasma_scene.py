@@ -53,13 +53,13 @@ FONT_EN = os.path.join(_MPL_TTF, "DejaVuSans.ttf")
 # ---------------- formula PNGs (mathtext, no LaTeX) ----------------
 FORMULAS = {
     "beamline":  r"$x_{k+1}=f(x_k,u_k)+w_k$",
-    "ekf":       r"$K_k=P_k^-H^\top(HP_k^-H^\top+R)^{-1}$",
-    "lstm":      r"$f_t=\sigma(W_f[h_{t-1},x_t]+b_f)$",
-    "fusion":    r"$\hat x_k=\alpha\,\hat x_k^{\rm EKF}+(1-\alpha)\hat x_k^{\rm LSTM}$",
-    "predict":   r"$\hat x_{k+1:k+H}=\mathrm{LSTM}(x_{k-L+1:k})$",
-    "closedloop":r"$u_k=-K(\hat x_k-x^{\rm ref})$",
-    "perf":      r"$\mathrm{RMSE}=\sqrt{\frac{1}{N}\sum_k(\hat x_k-x_k)^2}$",
-    "adaptive":  r"$z_k=Hx_k+v_k,\quad R_k\leftarrow\hat R_k$",
+    "ekf":       r"$K=PH^\top(HPH^\top+R)^{-1}$",
+    "lstm":      r"$f_t=\sigma(W_fh_{t-1}+b_f)$",
+    "fusion":    r"$\hat x=\alpha\hat x_E+(1-\alpha)\hat x_L$",
+    "predict":   r"$\hat x_{k+1:H}=\mathrm{LSTM}(x_{k-L:k})$",
+    "closedloop":r"$u=-K(\hat x-x^{\rm ref})$",
+    "perf":      r"$\mathrm{RMSE}=\sqrt{\overline{(\hat x-x)^2}}$",
+    "adaptive":  r"$z=Hx+v,\quad v\sim N(0,R)$",
 }
 
 
@@ -78,7 +78,7 @@ def _render_formula(tex, path, size):
 def ensure_formulas():
     for key, tex in FORMULAS.items():
         if not os.path.exists(_fname(key)):
-            _render_formula(tex, _fname(key), 19)
+            _render_formula(tex, _fname(key), 23)
 
 
 def formula_img(key):
@@ -485,35 +485,42 @@ def perf_panel(im, d, box, sim, t, gy0):
 
 
 def adaptive_panel(im, d, box, sim, t, gy0):
-    """(ne,Te) state portrait converging + adaptive observation noise R_k."""
+    """One clear story: observation noise z = x + v.  True curve, noisy
+    measurement dots with noise bars, fused estimate, and Chinese labels."""
     x0, y0, x1, y1 = box
     idx = int(t*FPS)
-    # left: state portrait
-    px0, px1 = x0+14, x0+(x1-x0)//2-6
-    py0, py1 = gy0+12, y1-30
-    d.line([(px0, (py0+py1)//2), (px1, (py0+py1)//2)], fill=(34, 38, 44), width=1)
-    d.line([((px0+px1)//2, py0), ((px0+px1)//2, py1)], fill=(34, 38, 44), width=1)
-    s0 = max(0, idx-180)
-    pts = []
-    for i in range(s0, idx+1):
-        xx = px0 + (px1-px0)*((sim.ekf[i]-2.0)/1.2)
-        yy = py1 - (py1-py0)*((sim.Te_true[i]-2.4)/1.4)
-        pts.append((xx, yy))
-    polyline(d, pts, GREEN, 2)
-    if pts:
-        lx, ly = pts[-1]
-        d.ellipse((lx-4, ly-4, lx+4, ly+4), fill=CYAN)
-    en_label(d, (px0+4, py0+2), "state portrait", 10, DIMTEXT)
-    en_label(d, (px0+4, py1-14), "n_e  vs  T_e", 9, DIMTEXT)
-    # right: adaptive R_k
-    rx0, rx1 = x0+(x1-x0)//2+10, x1-14
-    mp = frame_axes(d, rx0, py0, rx1, py1, 0.0, 0.22)
-    L = 240
-    s1 = max(0, idx-L)
-    xs = np.linspace(rx0, rx1, L)
-    polyline(d, [(xs[i], mp(sim.Rest[s1+i])) for i in range(L)], BLUE, 2)
-    en_label(d, (rx0+4, py0+2), "adaptive R_k", 10, DIMTEXT)
-    en_label(d, (x0+12, y1-16), "OBSERVATION NOISE  ·  ONLINE ADAPTATION", 10, DIMTEXT)
+    L = 220
+    s0 = max(0, idx-L)
+    n = idx - s0 + 1
+    xa, xb = x0+14, x1-14
+    ya, yb = gy0+14, y1-56
+    mp = frame_axes(d, xa, ya, xb, yb, 1.8, 3.2)
+    xs = np.linspace(xa, xb, n)
+
+    # noise bars: vertical segment from true value to noisy observation
+    step = 5
+    for i in range(0, n, step):
+        xv = xs[i]
+        yt = mp(sim.ne_true[s0+i])
+        yo = mp(sim.z_ne[s0+i])
+        d.line([(xv, yt), (xv, yo)], fill=(86, 58, 58), width=1)
+        d.ellipse((xv-2, yo-2, xv+2, yo+2), fill=(198, 96, 92))
+
+    # true state (cyan) and fused estimate (gold)
+    polyline(d, [(xs[i], mp(sim.ne_true[s0+i])) for i in range(n)], CYAN, 2)
+    polyline(d, [(xs[i], mp(sim.fused[s0+i])) for i in range(n)], GOLD, 2)
+    # latest observation highlighted
+    if n:
+        yl = mp(sim.z_ne[idx])
+        d.ellipse((xb-5, yl-5, xb+5, yl+5), fill=(236, 120, 116))
+
+    # Chinese labels (who is who)
+    cn_text(im, d, "红点 = 带噪观测  z = x + v", (x0+16, y1-48), 15, (222, 132, 128))
+    cn_text(im, d, "青线 = 真实密度   金线 = 融合估计", (x0+16, y1-26), 15, DIMTEXT)
+    # instantaneous noise magnitude
+    v = sim.z_ne[idx] - sim.ne_true[idx]
+    en_label(d, (x1-16, ya+4), "v = %+.3f   R~%.3f" % (v, sim.at(sim.Rest, idx)),
+             11, DIMTEXT, anchor="rt")
 
 
 CAPTIONS = [
@@ -524,7 +531,7 @@ CAPTIONS = [
     "多步预测：一次前向推出未来 H 步，视界越远不确定性越大。",
     "闭环调节：把估计值送回电源与气流，把状态拉回工艺设定点。",
     "性能对比：融合方案的均方根误差最小，抗扰动能力也最强。",
-    "自适应观测：噪声统计在线更新，束线在扰动中依然稳定。",
+    "观测噪声：传感器读数 z 总在真实密度 x 上下跳动，这个跳动 v 就是噪声；R 描述它有多大。",
 ]
 
 
@@ -556,8 +563,8 @@ def render_frame(sim, idx):
         x0 = MARGIN + col*(pw+GUTTER)
         box = (x0, y0, x0+pw, y0+rh)
         panel_base(d, box)
-        draw_formula(d, im, key, (x0, y0, x0+pw, y0+36))
-        gy0 = y0 + 44
+        draw_formula(d, im, key, (x0, y0, x0+pw, y0+46))
+        gy0 = y0 + 52
         painter(im, d, box, sim, t, gy0)
 
     seg = DURATION/len(CAPTIONS)
