@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Seven PDEs, solved live -- 1080x1350 (4:5) 30fps ~70s.
-Matches the vertical 1080x1350 format of the rest of the series.
+Seven PDEs, solved live -- faithful replica of the reference layout.
+1080x1350 (4:5) 30fps ~70s. Layout: row1 = 3 panels, row2 = 3 panels, row3 = 2 panels.
 Self-contained: numpy numeric solvers + PIL drawing + matplotlib mathtext PNG.
 No LaTeX install, no Manim required.
 """
@@ -19,12 +19,13 @@ from matplotlib.mathtext import math_to_image
 W, H = 1080, 1350
 FPS = 30
 DURATION = 70.0
-PANEL_H = 252
-PANEL_TOP = 112
-PANEL_GAP = 10
-PANEL_MARGIN = 24
-PANEL_GUTTER = 12
+
+TOP = 112                 # title band height
+ROW_H = [340, 340, 352]   # three rows
+ROW_Y = [TOP, TOP + ROW_H[0] + 12, TOP + ROW_H[0] + ROW_H[1] + 24]
 CAPTION_H = 162
+MARGIN = 20
+GUTTER = 12
 NFRAMES = int(FPS * DURATION)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -32,10 +33,10 @@ FORM = os.path.join(HERE, "formulas")
 os.makedirs(FORM, exist_ok=True)
 
 BG = (16, 17, 19)
-PANEL_BG = (26, 28, 32)
+PANEL_BG = (22, 24, 28)
 GRID = (52, 56, 63)
 TEXT = (214, 219, 226)
-DIMTEXT = (128, 134, 143)
+DIMTEXT = (130, 136, 145)
 CYAN = (80, 214, 224)
 RED = (232, 96, 92)
 GOLD = (240, 186, 84)
@@ -67,11 +68,11 @@ FORMULA_SUB = {
     "rd":      r"$\partial_tv=D_v\nabla^{2}v+uv^{2}-(F+k)v$",
 }
 
+
 def _fname(key, sub=False):
     return os.path.join(FORM, key + ("_sub" if sub else "") + ".png")
 
 def _render_formula(tex, path, size, color):
-    """Render mathtext onto a transparent PNG (no white rectangle)."""
     fig = plt.figure(figsize=(0.01, 0.01), dpi=200)
     fig.patch.set_alpha(0)
     fig.text(0, 0, tex, fontsize=size, color=color, va="bottom", ha="left")
@@ -80,13 +81,11 @@ def _render_formula(tex, path, size, color):
 
 def ensure_formulas():
     for key, tex in FORMULAS.items():
-        p = _fname(key)
-        if not os.path.exists(p):
-            _render_formula(tex, p, 22, "#e6ebf2")
+        if not os.path.exists(_fname(key)):
+            _render_formula(tex, _fname(key), 22, "#e6ebf2")
     for key, tex in FORMULA_SUB.items():
-        p = _fname(key, sub=True)
-        if not os.path.exists(p):
-            _render_formula(tex, p, 17, "#b9c0cb")
+        if not os.path.exists(_fname(key, sub=True)):
+            _render_formula(tex, _fname(key, sub=True), 17, "#b9c0cb")
 
 def formula_img(key, sub=False):
     return Image.open(_fname(key, sub)).convert("RGBA")
@@ -94,96 +93,81 @@ def formula_img(key, sub=False):
 
 # ---------------- numeric solvers ----------------
 class HeatSolver:
-    """2D heat equation, two gaussian blobs diffusing."""
-    N = 72
+    N = 80
     def __init__(self):
         y, x = np.mgrid[0:self.N, 0:self.N]
-        self.u = (np.exp(-(((x-24)**2+(y-36)**2)/120)) +
-                  0.8*np.exp(-(((x-50)**2+(y-26)**2)/80)))
+        self.u = (np.exp(-(((x-26)**2+(y-42)**2)/150)) +
+                  0.75*np.exp(-(((x-56)**2+(y-30)**2)/90)))
         self.u = np.clip(self.u, 0, 1)
     def step(self):
         p = np.pad(self.u, 1, mode="edge")
-        lap = (p[1:-1,2:] + p[1:-1,:-2] + p[2:,1:-1] + p[:-2,1:-1] - 4*self.u)
-        self.u = np.clip(self.u + 0.16*lap, 0, 1.2)
+        lap = p[1:-1,2:]+p[1:-1,:-2]+p[2:,1:-1]+p[:-2,1:-1]-4*self.u
+        self.u = np.clip(self.u + 0.14*lap, 0, 1.2)
 
 
 class WaveSolver:
-    """1D wave: gaussian pulse splits into left/right travelling waves. Analytic d'Alembert."""
+    """1D wave: gaussian pulse splits into left/right travelling waves."""
     def field(self, t):
-        x = np.linspace(-1, 1, 240)
-        # periodic re-emission so the pulse keeps being born at centre
-        tp = t % 2.4
-        f = lambda z: np.exp(-(z**2)/0.010)*np.cos(8*z)
-        c = 0.36
-        ul = 0.5*f(x + c*tp)
-        ur = 0.5*f(x - c*tp)
-        # faint reflected waves from the fixed ends
+        x = np.linspace(-1, 1, 300)
+        tp = t % 2.6
+        f = lambda z: np.exp(-(z**2)/0.011)*np.cos(7*z)
+        c = 0.34
+        ul = 0.5*f(x + c*tp)     # left-going
+        ur = 0.5*f(x - c*tp)     # right-going
         return x, ul, ur, ul+ur
 
 
 class MaxwellSolver:
-    """ dipole radiation: expanding alternating E-field lobes (analytic). """
-    def field(self, t, n=90):
-        a = np.linspace(0.16, 0.95, n)
-        th = np.linspace(0, 2*np.pi, 160)
-        R, T = np.meshgrid(a, th, indexing="ij")
-        # dipole pattern modulated by outgoing wave
-        patt = np.abs(np.sin(T))*(0.55 + 0.45*np.cos(7*R - 3.2*t))
-        X = R*np.cos(T)*patt
-        Y = R*np.sin(T)*patt
-        return X, Y
+    """ analytic electric-dipole field lines r = r0 sin^2(theta), animated phase. """
+    def field(self, t, n_lines=13, n_th=150):
+        th = np.linspace(0, 2*np.pi, n_th)
+        lines = []
+        for k in range(n_lines):
+            r0 = 0.12 + 0.82*(k/(n_lines-1))
+            r = r0*np.cos(th)**2   # left-right lobes around the dipole axis
+            # phase-driven slight breathing
+            r = r*(0.94 + 0.06*np.cos(3.0*t - 2*r0*math.pi))
+            lines.append((r*np.cos(th), r*np.sin(th)))
+        return lines
 
 
 class NavierSolver:
-    """ potential flow around cylinder + two shed vortices -> streaklines. """
+    """ cylinder/airfoil in potential flow + tracer particles. """
     def __init__(self):
-        self.np = 130
+        self.np = 90
         rng = np.random.default_rng(11)
         self.px = rng.uniform(-1.0, -0.5, self.np)
-        self.py = rng.uniform(-0.62, 0.62, self.np)
+        self.py = rng.uniform(-0.72, 0.72, self.np)
         self.age = rng.uniform(0, 1, self.np)
     def vel(self, x, y, t):
-        a = 0.32
-        r2 = x*x + y*y
-        if r2 < a*a:
-            r2 = a*a
-        # doublet + uniform
+        a = 0.24
+        r2 = max(x*x + y*y, a*a)
         u = 1.0*(1 - a*a*(x*x-y*y)/(r2*r2))
         v = -1.0*(2*a*a*x*y/(r2*r2))
-        # shedding vortices downstream
-        for k in (0, 1):
-            vx = 0.5 + 0.42*((t*0.42 + k*0.5) % 1.0)
-            vy = (0.20 if k == 0 else -0.20)
-            gamma = (0.16 if k == 0 else -0.16)
-            dx, dy = x-vx, y-vy
-            d2 = dx*dx + dy*dy + 0.02
-            u += -gamma*dy/d2
-            v +=  gamma*dx/d2
         return u, v
     def step(self, t, dt=0.045):
         for i in range(self.np):
             u, v = self.vel(self.px[i], self.py[i], t)
             self.px[i] += u*dt; self.py[i] += v*dt
             self.age[i] += dt
-            if self.px[i] > 1.05 or abs(self.py[i]) > 0.78:
+            if self.px[i] > 1.05 or abs(self.py[i]) > 0.82:
                 self.px[i] = -1.0
-                self.py[i] = np.random.uniform(-0.62, 0.62)
+                self.py[i] = np.random.uniform(-0.72, 0.72)
                 self.age[i] = 0.0
 
 
 class SchrodingerSolver:
-    """ free gaussian wavepacket: centre advances, width spreads -> glowing |psi|^2 cloud. """
-    def density(self, t, n=120):
+    """ 3D gaussian wavepacket |psi| surface, evolving width/centre. """
+    def surface(self, t, n=42):
+        s = 0.22 + 0.10*(t % 6.0)
+        xc = -0.35 + 0.14*(t % 6.0)
         xs = np.linspace(-1, 1, n)
         ys = np.linspace(-1, 1, n)
         X, Y = np.meshgrid(xs, ys, indexing="ij")
-        tp = t % 3.6                  # re-emitted packet, like the wave panel
-        s = 0.15 + 0.10*tp            # packet spreads while travelling
-        xc = -0.72 + 0.40*tp          # packet travels left -> right
-        env2 = np.exp(-(((X-xc)**2 + Y**2)/(s*s)))
-        fringe = 0.5 + 0.5*np.cos(12*(X-xc) - 3.0*t)   # internal wave fringes
-        dens = env2 * (0.7 + 0.3*fringe)
-        return dens, xc, s
+        amp = np.exp(-(((X-xc)**2 + Y**2)/(2*s*s)))
+        phase = np.cos(7*(X-xc) - 2.4*t)
+        Z = amp*phase
+        return X, Y, Z
 
 
 class BeamSolver:
@@ -194,21 +178,20 @@ class BeamSolver:
         mode = (np.cosh(beta*x)-np.cos(beta*x) -
                 0.734*(np.sinh(beta*x)-np.sin(beta*x)))
         mode /= np.max(np.abs(mode))
-        y = 0.20*mode*np.cos(2.5*t)
+        y = 0.20*mode*np.cos(2.3*t)
         return x, y
 
 
 class RDSolver:
-    """ Gray-Scott reaction-diffusion, spot/stripe self-organisation. """
-    N = 78
+    N = 84
     def __init__(self):
         rng = np.random.default_rng(20261127)
         self.u = np.ones((self.N, self.N))
         self.v = np.zeros((self.N, self.N))
-        for _ in range(14):
+        for _ in range(12):
             cx, cy = rng.integers(6, self.N-6, 2)
-            self.u[cx-3:cx+3, cy-3:cy+3] = 0.45
-            self.v[cx-3:cx+3, cy-3:cy+3] = 0.30
+            self.u[cx-4:cx+4, cy-4:cy+4] = 0.45
+            self.v[cx-4:cx+4, cy-4:cy+4] = 0.30
         self.F, self.k = 0.033, 0.062
         self.Du, self.Dv = 0.21, 0.105
     def step(self, n=3):
@@ -217,61 +200,56 @@ class RDSolver:
                 p = np.pad(a, 1, mode="edge")
                 return p[1:-1,2:]+p[1:-1,:-2]+p[2:,1:-1]+p[:-2,1:-1]-4*a
             uvv = self.u*self.v*self.v
-            self.u = np.clip(self.u + self.Du*lap(self.u) - uvv + self.F*(1-self.u), 0, 1)
-            self.v = np.clip(self.v + self.Dv*lap(self.v) + uvv - (self.F+self.k)*self.v, 0, 1)
+            self.u = np.clip(self.u + self.Du*lap(self.u)-uvv+self.F*(1-self.u), 0, 1)
+            self.v = np.clip(self.v + self.Dv*lap(self.v)+uvv-(self.F+self.k)*self.v, 0, 1)
 
 
 class Sim:
     def __init__(self):
-        self.heat = HeatSolver()
-        self.wave = WaveSolver()
-        self.maxwell = MaxwellSolver()
-        self.navier = NavierSolver()
-        self.schrod = SchrodingerSolver()
-        self.beam = BeamSolver()
-        self.rd = RDSolver()
+        self.heat = HeatSolver(); self.wave = WaveSolver(); self.maxwell = MaxwellSolver()
+        self.navier = NavierSolver(); self.schrod = SchrodingerSolver()
+        self.beam = BeamSolver(); self.rd = RDSolver()
     def step(self, t):
-        self.heat.step()
-        self.navier.step(t)
-        self.rd.step(3)
+        self.heat.step(); self.navier.step(t); self.rd.step(3)
 
 
 # ---------------- drawing helpers ----------------
 def map_color(x, lo, hi, c0, c1):
-    c0 = np.asarray(c0, dtype=np.float64)
-    c1 = np.asarray(c1, dtype=np.float64)
+    c0 = np.asarray(c0, dtype=np.float64); c1 = np.asarray(c1, dtype=np.float64)
     x = np.clip((x-lo)/(hi-lo), 0, 1)[..., None]
-    return (c0*(1-x) + c1*x).astype(np.uint8)
+    return (c0*(1-x)+c1*x).astype(np.uint8)
 
-
-def panel_base(d, box, title=None):
-    x0, y0, x1, y1 = box
-    d.rounded_rectangle(box, radius=9, fill=PANEL_BG, outline=GRID, width=1)
-    d.line([(x0+12, y0+34), (x1-12, y0+34)], fill=GRID, width=1)
-
+def panel_base(d, box):
+    d.rounded_rectangle(box, radius=8, fill=PANEL_BG, outline=(44, 48, 54), width=1)
 
 def draw_formula(d, im, key, box, sub=False):
     x0, y0, x1, y1 = box
     f = formula_img(key, sub=sub)
-    maxw, maxh = (x1-x0-20), (y1-y0-4)
+    maxw, maxh = x1-x0-12, y1-y0-2
     r = min(maxw/f.width, maxh/f.height, 1.0)
     f = f.resize((max(1, int(f.width*r)), max(1, int(f.height*r))), Image.LANCZOS)
-    im.paste(f, (int((x0+x1-f.width)/2), int(y0+2)), f)
+    im.paste(f, (int((x0+x1-f.width)/2), int(y0+1)), f)
     return f.height
 
 
+def cn_text(im, d, text, xy, size, fill, anchor=None):
+    d.text(xy, text, font=ImageFont.truetype(FONT_CN, size), fill=fill, anchor=anchor)
+
+def en_label(d, xy, text, size=12, fill=DIMTEXT, anchor=None):
+    d.text(xy, text, font=ImageFont.truetype(FONT_EN, size), fill=fill, anchor=anchor)
+
+
+# ---------------- panels (each draws inside [x0,y0,x1,y1]; gy0 = graph top) ----------------
 def heat_panel(im, d, box, sim, gy0):
     x0, y0, x1, y1 = box
-    u = sim.heat.u
-    rgb = map_color(u, 0.0, 0.95, (28, 42, 104), (244, 196, 76))
+    rgb = map_color(sim.heat.u, 0.0, 0.9, (26, 52, 132), (250, 198, 70))
     big = Image.fromarray(rgb, "RGB").resize((x1-x0-16, y1-gy0-8), Image.BILINEAR)
     im.paste(big, (x0+8, gy0))
-    # colour bar
-    cbx = x1-16
-    for i in range(60):
-        f = 1 - i/59
-        c = tuple(int((28+(244-28)*f, 42+(196-42)*f, 104+(76-104)*f)[k]) for k in range(3))
-        d.line([(cbx, gy0+i*2), (cbx+5, gy0+i*2)], fill=c)
+    cbx = x1-15
+    for i in range(56):
+        f = 1-i/55
+        col = (int(26+(250-26)*f), int(52+(198-52)*f), int(132+(70-132)*f))
+        d.line([(cbx, gy0+2+i*2), (cbx+5, gy0+2+i*2)], fill=col)
 
 
 def wave_panel(im, d, box, sim, t, gy0):
@@ -279,211 +257,276 @@ def wave_panel(im, d, box, sim, t, gy0):
     lane = (y1-gy0)//3
     x, ul, ur, ut = sim.wave.field(t)
     def plot(vals, cy, col):
-        pts = [(x0+10 + (i/(len(vals)-1))*(x1-x0-20),
-                cy - vals[i]*lane*0.40) for i in range(len(vals))]
+        pts = [(x0+12+(i/(len(vals)-1))*(x1-x0-24), cy-vals[i]*lane*0.42)
+               for i in range(len(vals))]
         d.line(pts, fill=col, width=2)
-    for k, (vals, col, lab) in enumerate([(ul, CYAN, "u_L"), (ur, RED, "u_R"), (ut, GOLD, "u_L+u_R")]):
-        cy = gy0 + lane*k + lane//2 + 6
-        d.line([(x0+10, cy), (x1-10, cy)], fill=(44, 48, 54), width=1)
+    # top: right-going pulse (gold) + arrow; middle: left-going (blue) + arrow; bottom: sum (white) + walls
+    for k, (vals, col, lab) in enumerate([(ur, GOLD, "+"), (ul, (110,150,225), "-"), (ut, WHITE, "")]):
+        cy = gy0+lane*k+lane//2+4
+        d.line([(x0+12, cy), (x1-12, cy)], fill=(46, 50, 56), width=1)
         plot(vals, cy, col)
-        en_label(d, (x0+14, cy-lane//2+5), lab, size=13, fill=col)
+        if k == 0:
+            en_label(d, (x0+16, cy-lane//2+2), "+", 14, GOLD)
+            d.line([(x1-46, cy-8), (x1-16, cy-8)], fill=GOLD, width=1)
+            d.line([(x1-22, cy-12), (x1-16, cy-8), (x1-22, cy-4)], fill=GOLD, width=1)
+        elif k == 1:
+            en_label(d, (x1-24, cy-lane//2+2), "-", 14, (110,150,225))
+            d.line([(x0+16, cy+8), (x0+46, cy+8)], fill=(110,150,225), width=1)
+            d.line([(x0+22, cy+4), (x0+16, cy+8), (x0+22, cy+12)], fill=(110,150,225), width=1)
+        else:
+            d.line([(x0+12, cy-lane//2+4), (x0+12, cy+lane//2-4)], fill=(120,126,134), width=2)
+            d.line([(x1-12, cy-lane//2+4), (x1-12, cy+lane//2-4)], fill=(120,126,134), width=2)
 
 
 def maxwell_panel(im, d, box, sim, t, gy0):
     x0, y0, x1, y1 = box
     cx, cy = (x0+x1)//2, (gy0+y1)//2
-    rx, ry = (x1-x0)//2-20, (y1-gy0)//2-12
-    X, Y = sim.maxwell.field(t)
-    # draw contour-ish loops
-    for k in range(0, X.shape[0], 5):
-        pts = [(cx + X[k, j]*rx, cy + Y[k, j]*ry) for j in range(0, X.shape[1], 2)]
-        col = CYAN if k % 10 == 0 else GRID
+    rx, ry = (x1-x0)/2-14, (y1-gy0)/2-12
+    lines = sim.maxwell.field(t)
+    for k, (X, Y) in enumerate(lines):
+        pts = [(cx+X[j]*rx, cy+Y[j]*ry) for j in range(0, len(X), 2)]
+        col = (128, 134, 142) if k % 2 == 0 else (104, 110, 118)
         d.line(pts, fill=col, width=1)
-    d.ellipse((cx-5, cy-5, cx+5, cy+5), fill=RED)
-    d.ellipse((cx+8, cy-5, cx+18, cy+5), fill=CYAN)
-    en_label(d, (x0+12, y1-22), "E / B  FIELD LINES", size=12)
+    d.ellipse((cx-9, cy-6, cx+1, cy+4), fill=RED)
+    d.ellipse((cx+3, cy-6, cx+13, cy+4), fill=CYAN)
+    en_label(d, (x0+12, y1-20), "E / B  FIELD LINES", 11)
 
 
 def navier_panel(im, d, box, sim, t, gy0):
     x0, y0, x1, y1 = box
-    cx, cy = (x0+x1)//2, (gy0+y1)//2
-    sx = (x1-x0)/2.2; sy = (y1-gy0)/1.7
-    # cylinder
-    d.ellipse((cx-0.32*sx, cy-0.32*sy, cx+0.32*sx, cy+0.32*sy),
-              fill=(70, 58, 40), outline=GOLD, width=1)
+    X0, X1 = x0+12, x1-12
+    Y0, Y1 = gy0+10, y1-18
+    midy = (Y0+Y1)/2
+    a = 0.23
+    def flow_y(x, y0line):
+        return y0line + a*a*y0line/(x*x+y0line*y0line+0.05)*math.exp(-(x*x)/0.42)
+    def px(x): return X0+(x+1)/2*(X1-X0)
+    def py(yv): return midy-yv*(Y1-Y0)/2
+    # curved streamline grid
+    for y0line in np.linspace(-0.85, 0.85, 12):
+        pts = [(px(x), py(flow_y(x, y0line))) for x in np.linspace(-1, 1, 64)]
+        d.line(pts, fill=(96, 102, 110), width=1)
+    for xv in np.linspace(-0.92, 0.92, 10):
+        pts = [(px(xv), py(flow_y(xv, y0line))) for y0line in np.linspace(-0.85, 0.85, 26)]
+        d.line(pts, fill=(74, 80, 88), width=1)
+    # airfoil
+    acx, acy = px(0), midy
+    d.ellipse((acx-14, acy-24, acx+32, acy+8), fill=(112, 116, 122), outline=(176, 180, 186), width=1)
+    # tracers
     for i in range(sim.navier.np):
-        px, py, age = sim.navier.px[i], sim.navier.py[i], sim.navier.age[i]
-        xx = cx + px*sx; yy = cy + py*sy
-        if x0+6 < xx < x1-6 and gy0 < yy < y1-6:
-            a = int(90 + 130*min(age, 1))
-            col = (a, int(a*0.78), int(a*0.48))
-            uv, vv = sim.navier.vel(px, py, t)
-            d.line([(xx-uv*5.5, yy-vv*5.5), (xx, yy)],
-                   fill=(a//3, int(a*0.26), int(a*0.16)), width=1)
-            d.ellipse((xx-1.9, yy-1.9, xx+1.9, yy+1.9), fill=col)
-    en_label(d, (x0+12, y1-22), "VORTEX SHEDDING", size=12)
+        pxx, pyy, age = sim.navier.px[i], sim.navier.py[i], sim.navier.age[i]
+        xx, yy = px(pxx), py(flow_y(pxx, pyy))
+        if X0+2 < xx < X1-2 and Y0+2 < yy < Y1-2:
+            col = (118, 200, 140) if (i % 3 == 0) else (224, 158, 84)
+            d.ellipse((xx-1.6, yy-1.6, xx+1.6, yy+1.6), fill=col)
+    en_label(d, (x0+12, y1-18), "FLOW AROUND AIRFOIL", 11)
+
+
+def schrod_panel(im, d, box, sim, t, gy0):
+    """3D coloured wave-packet surface inside a circular viewport."""
+    x0, y0, x1, y1 = box
+    cx, cy = (x0+x1)//2, (gy0+y1)//2
+    R = int(min((x1-x0)/2-12, (y1-gy0)/2-10))
+    # clip everything (surface + circle) through one layer so nothing escapes the panel
+    layer = Image.new("RGBA", (x1-x0, y1-gy0), (0, 0, 0, 0))
+    dl = ImageDraw.Draw(layer)
+    lx, ly = cx-x0, cy-gy0
+    ang = 0.4 + 0.30*t
+    ca, sa = math.cos(ang), math.sin(ang)
+    X, Y, Z = sim.schrod.surface(t)
+    n = X.shape[0]
+    def proj(i, j):
+        xx, yy, zz = X[i, j], Y[i, j], Z[i, j]
+        xr = xx*ca - yy*sa
+        yr = xx*sa + yy*ca
+        return (lx+(xr-yr)*0.42*R, ly+(xr+yr)*0.20*R - zz*0.40*R)
+    def zcol(z):
+        q = max(0, min(1, (z+0.8)/1.6))
+        return (int(70+130*q), int(150-40*q), int(225-70*q), 210)
+    for i in range(0, n, 2):
+        cols = [zcol(Z[i, j]) for j in range(n)]
+        for j in range(n-1):
+            dl.line([proj(i, j), proj(i, j+1)], fill=cols[j], width=2)
+    for j in range(0, n, 3):
+        for i in range(n-1):
+            dl.line([proj(i, j), proj(i+1, j)], fill=zcol(Z[i, j]), width=1)
+    # small coordinate triad at centre
+    dl.line([(lx, ly), (lx+22, ly)], fill=(200, 206, 214), width=2)
+    dl.line([(lx, ly), (lx, ly-22)], fill=(200, 206, 214), width=2)
+    dl.line([(lx, ly), (lx-16, ly+10)], fill=(200, 206, 214), width=2)
+    dl.ellipse((lx-R, ly-R, lx+R, ly+R), outline=(104, 110, 118), width=1)
+    # paste the whole circular viewport through a circular clip
+    mask = Image.new("L", (x1-x0, y1-gy0), 0)
+    dm = ImageDraw.Draw(mask)
+    dm.ellipse((lx-R, ly-R, lx+R, ly+R), fill=255)
+    im.paste(layer, (x0, gy0), mask)
+    en_label(d, (x0+12, y1-19), "Re ψ  SURFACE", 11)
 
 
 def psi_panel(im, d, box, t, gy0):
     x0, y0, x1, y1 = box
-    mid = (gy0+y1)//2
-    xs = np.linspace(0, 1, 220)
-    s = 0.16 + 0.045*t
-    env = np.exp(-((xs-0.5)**2)/(2*s*s))
-    osc = np.cos(22*(xs-0.5) - 4*t)
-    y = env*osc
-    pts = [(x0+10 + v*(x1-x0-20), mid - y[i]*(y1-gy0)*0.34)
+    xs = np.linspace(-1, 1, 300)
+    xc = 0.0
+    s = 0.085 + 0.015*(t % 5)
+    env = np.exp(-((xs-xc)**2)/(2*s*s))
+    wave = env*np.cos(23*(xs-xc) - 3.0*t)
+    base = gy0 + (y1-gy0)*0.55
+    amp = (y1-gy0)*0.30
+    d.line([(x0+12, base), (x1-12, base)], fill=(88, 94, 102), width=1)
+    pts = [(x0+12+v*(x1-x0-24), base-wave[i]*amp)
            for i, v in enumerate(xs)]
     d.line(pts, fill=GOLD, width=2)
-    # |psi|^2 envelope
-    up = [(x0+10 + v*(x1-x0-20), mid - env[i]*(y1-gy0)*0.34) for i, v in enumerate(xs)]
-    dn = [(x0+10 + v*(x1-x0-20), mid + env[i]*(y1-gy0)*0.34) for i, v in enumerate(xs)]
-    d.line(up, fill=(90, 96, 106), width=1)
-    d.line(dn, fill=(90, 96, 106), width=1)
+    # envelope
+    up = [(x0+12+v*(x1-x0-24), base-env[i]*amp) for i, v in enumerate(xs)]
+    dn = [(x0+12+v*(x1-x0-24), base+env[i]*amp) for i, v in enumerate(xs)]
+    d.line(up, fill=(110, 96, 64), width=1); d.line(dn, fill=(110, 96, 64), width=1)
+    en_label(d, (x1-18, gy0+6), "|ψ|²", 13, GOLD, anchor="rt")
 
 
 def beam_panel(im, d, box, sim, t, gy0):
+    """3D solid cantilever beam with mesh texture, fixed wall at left."""
     x0, y0, x1, y1 = box
-    cx, cy = x0+42, (gy0+y1)//2
-    L = x1-x0-84
+    ax0, ax1 = x0+46, x1-34
+    cy = (gy0+y1)//2
+    L = ax1-ax0
     x, y = sim.beam.shape(t)
-    # fixed wall with hatch
-    d.rectangle((cx-9, gy0+18, cx, y1-34), fill=(74, 76, 80))
-    for hy in range(gy0+18, y1-34, 10):
-        d.line([(cx-9, hy), (cx, hy+7)], fill=(120, 122, 128), width=1)
-    # ghost poses (fading vibration history)
-    for dt, a in ((0.55, 90), (0.30, 120), (0.14, 150)):
+    depth = min(30, (y1-gy0)*0.22)
+    shear = L*0.045
+    def surf(xi, yi, f):
+        return (ax0+xi*L+f*shear, cy-yi*(y1-gy0)*0.62+(f-0.5)*depth)
+    # fixed wall
+    d.rectangle((ax0-14, gy0+22, ax0, y1-30), fill=(84, 86, 90))
+    for hy in range(gy0+22, y1-30, 11):
+        d.line([(ax0-14, hy), (ax0, hy+8)], fill=(130, 134, 140), width=1)
+    # ghost poses
+    for dt, a in ((0.55, 96), (0.28, 126)):
         _, yh = sim.beam.shape(t-dt)
-        pts = [(cx+xi*L, cy - yi*(y1-gy0)*0.78) for xi, yi in zip(x, yh)]
-        d.line(pts, fill=(a, int(a*0.72), int(a*0.34)), width=2)
-    # solid beam body as a tapered ribbon (top + bottom edges)
-    top = [(cx+xi*L, cy - yi*(y1-gy0)*0.78 - 4) for xi, yi in zip(x, y)]
-    bot = [(cx+xi*L, cy - yi*(y1-gy0)*0.78 + 4) for xi, yi in zip(x, y)][::-1]
-    d.polygon(top+bot, fill=(178, 132, 64))
-    d.line(top, fill=GOLD, width=2)
-    d.line(bot[::-1], fill=(120, 88, 44), width=1)
-    # free-end tip marker
-    tipy = cy - y[-1]*(y1-gy0)*0.78
-    d.ellipse((cx+L-5, tipy-5, cx+L+5, tipy+5), fill=(250, 214, 130))
-    cn_text(im, d, "悬臂梁 · 一阶振型振动", (x0+14, y1-28), 14, DIMTEXT)
+        d.line([surf(xi, yi, 0.5) for xi, yi in zip(x, yh)],
+               fill=(a, int(a*0.74), int(a*0.42)), width=2)
+    # 3D beam: front face + top face
+    front_top = [surf(xi, yi, 0) for xi, yi in zip(x, y)]
+    front_bot = [surf(xi, yi, 1) for xi, yi in zip(x, y)][::-1]
+    d.polygon(front_top+front_bot, fill=(146, 150, 158))
+    d.line(front_top, fill=(196, 200, 208), width=2)
+    d.line(front_bot[::-1], fill=(96, 100, 108), width=2)
+    # mesh texture on front face
+    for xi in np.linspace(0, 1, 15):
+        yi = np.interp(xi, x, y)
+        d.line([surf(xi, yi, 0), surf(xi, yi, 1)], fill=(108, 112, 120), width=1)
+    for f in (0.3, 0.6):
+        d.line([surf(xi, yi, f) for xi, yi in zip(x, y)], fill=(176, 180, 188), width=1)
+    # tip
+    txx, tyy = surf(1, y[-1], 0.5)
+    d.ellipse((txx-4, tyy-4, txx+4, tyy+4), fill=(236, 206, 132))
+    cn_text(im, d, "悬臂梁 · 一阶振型", (x0+14, y1-26), 14, DIMTEXT)
 
 
 def rd_panel(im, d, box, sim, gy0):
     x0, y0, x1, y1 = box
-    v = sim.rd.v
-    rgb = map_color(v, 0.02, 0.34, (52, 30, 24), (246, 158, 70))
+    rgb = map_color(sim.rd.v, 0.02, 0.34, (176, 58, 32), (255, 202, 96))
     big = Image.fromarray(rgb, "RGB").resize((x1-x0-16, y1-gy0-8), Image.BILINEAR)
     im.paste(big, (x0+8, gy0))
 
 
-def schrod_panel(im, d, box, sim, t, gy0):
-    x0, y0, x1, y1 = box
-    dens, xc, s = sim.schrod.density(t)
-    rgb = map_color(dens, 0.0, 1.0, (18, 24, 62), (108, 224, 236))
-    cloud = Image.fromarray(rgb, "RGB").resize((x1-x0-16, y1-gy0-8), Image.BILINEAR)
-    im.paste(cloud, (x0+8, gy0))
-    # travel direction arrow at the base
-    ay = y1-26
-    ax0, ax1 = x0+18, x1-24
-    d.line([(ax0, ay), (ax1, ay)], fill=(120, 130, 140), width=1)
-    d.line([(ax1-8, ay-4), (ax1, ay), (ax1-8, ay+4)], fill=(120, 130, 140), width=1)
-    cn_text(im, d, "|ψ|²  概率云前进并展宽", (x0+14, y1-46), 14, DIMTEXT)
-
-
-# ---------------- subtitles (one sentence per scene, evolving) ----------------
+# ---------------- subtitle script ----------------
 CAPTIONS = [
     "七个偏微分方程，每一个都在屏幕上被现场求解。",
-    "热量沿 ∂u/∂t = α∇²u 扩散，两个热点渐渐摊平。",
-    "弦上的脉冲按波动方程裂成左右两列行波。",
-    "麦克斯韦方程组让电磁场彼此激发、向外传播。",
-    "纳维-斯托克斯方程刻画出圆柱后的涡旋脱落。",
-    "薛定谔方程让波包一边前进一边展宽。",
-    "概率密度 |ψ|² 守恒，振荡被高斯包络轻轻收住。",
+    "热量沿 ∂u/∂t = α∇²u 扩散，两个热斑渐渐摊平。",
+    "弦上的脉冲按波动方程分裂成向左和向右的两列行波。",
+    "麦克斯韦方程组让电磁场线彼此激发、向外传播。",
+    "纳维-斯托克斯方程刻画出流体绕过物体时的弯曲流线。",
+    "薛定谔方程让波包的概率幅在复平面上起伏演化。",
+    "概率密度 |ψ|² 守恒，高频振荡被高斯包络收住。",
     "悬臂梁的振动，由四阶导数与材料刚度共同决定。",
     "反应扩散方程中，均匀状态自发长出斑图。",
-    "七个方程，七种演化——数学就这样把世界写成偏微分方程。",
 ]
 
 
-def cn_text(im, d, text, xy, size, fill, anchor=None):
-    f = ImageFont.truetype(FONT_CN, size)
-    d.text(xy, text, font=f, fill=fill, anchor=anchor)
-
-
-def en_label(d, xy, text, size=13, fill=DIMTEXT, anchor=None):
-    d.text(xy, text, font=ImageFont.truetype(FONT_EN, size), fill=fill, anchor=anchor)
-
-
+# ---------------- frame ----------------
 def render_frame(sim, idx):
-    t = idx / FPS
-    sim.step(t)
+    t = idx/FPS
     im = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(im)
 
-    # ---- title (bilingual, no cursor) ----
-    cn_text(im, d, "偏微分方程 · 现场求解", (W//2, 42), 36, WHITE, anchor="mt")
-    en_label(d, (W//2, 88),
-             "P D E   ·   S E V E N   E Q U A T I O N S   I N   M O T I O N",
-             size=13, fill=DIMTEXT, anchor="mt")
-    en_label(d, (W-24, 44), "AIMaker-Lab", size=12,
-             fill=(120, 126, 136), anchor="rt")
+    cn_text(im, d, "偏微分方程 · 现场求解", (W//2, 38), 36, WHITE, anchor="mt")
+    en_label(d, (W//2, 82), "P D E   ·   S E V E N   E Q U A T I O N S   I N   M O T I O N",
+             13, DIMTEXT, anchor="mt")
+    en_label(d, (W-22, 40), "AIMaker-Lab", 12, (120, 126, 136), anchor="rt")
 
-    # ---- panel layout: 2 columns x 4 rows, tuned for 1080x1350 ----
-    m, g = PANEL_MARGIN, PANEL_GUTTER
-    pw = (W - 2*m - g)//2
-    ph = PANEL_H
-    ys = [PANEL_TOP + r*(ph + PANEL_GAP) for r in range(4)]
-    boxes = []
-    for y in ys:
-        for c in range(2):
-            x = m + c*(pw+g)
-            boxes.append((x, y, x+pw, y+ph))
-
-    keys = ["heat", "wave", "maxwell", "navier",
-            "schrod", "psi", "beam", "rd"]
-    subkeys = {"maxwell", "navier", "rd"}
-    panels = {"heat": heat_panel, "wave": wave_panel, "maxwell": maxwell_panel,
-              "navier": navier_panel, "schrod": schrod_panel, "psi": psi_panel,
-              "beam": beam_panel, "rd": rd_panel}
-
-    for key, box in zip(keys, boxes):
-        y0 = box[1]
-        has_sub = key in subkeys
+    specs = [
+        # (key, row, col_in_row, cols_in_row, has_sub, painter)
+        ("heat",    0, 0, 3, False, "graph"),
+        ("wave",    0, 1, 3, False, "graph"),
+        ("maxwell", 0, 2, 3, True,  "graph"),
+        ("navier",  1, 0, 3, True,  "graph"),
+        ("schrod",  1, 1, 3, False, "graph"),
+        ("psi",     1, 2, 3, False, "graph"),
+        ("beam",    2, 0, 2, False, "graph"),
+        ("rd",      2, 1, 2, True,  "graph"),
+    ]
+    painters = {"heat": heat_panel, "wave": wave_panel, "maxwell": maxwell_panel,
+                "navier": navier_panel, "schrod": schrod_panel, "psi": psi_panel,
+                "beam": beam_panel, "rd": rd_panel}
+    for key, row, col, ncols, has_sub, _ in specs:
+        y0 = ROW_Y[row]; rh = ROW_H[row]
+        total = W-2*MARGIN-(ncols-1)*GUTTER
+        pw = total//ncols
+        x0 = MARGIN+col*(pw+GUTTER)
+        box = (x0, y0, x0+pw, y0+rh)
         panel_base(d, box)
-        draw_formula(d, im, key, (box[0], y0, box[2], y0+34))
+        draw_formula(d, im, key, (x0, y0, x0+pw, y0+32))
         if has_sub:
-            draw_formula(d, im, key, (box[0], y0+34, box[2], y0+56), sub=True)
-        gy0 = y0 + (64 if has_sub else 44)
+            draw_formula(d, im, key, (x0, y0+32, x0+pw, y0+54), sub=True)
+        gy0 = y0 + (62 if has_sub else 42)
+        p = painters[key]
         if key in ("heat", "rd"):
-            panels[key](im, d, box, sim, gy0)
-        elif key in ("psi",):
-            psi_panel(im, d, box, t, gy0)
+            p(im, d, box, sim, gy0)
+        elif key == "psi":
+            p(im, d, box, t, gy0)
         else:
-            panels[key](im, d, box, sim, t, gy0)
+            p(im, d, box, sim, t, gy0)
 
-    # ---- caption bar ----
     seg = DURATION/len(CAPTIONS)
     ci = min(int(t/seg), len(CAPTIONS)-1)
-    top = H - CAPTION_H
+    top = H-CAPTION_H
     d.rectangle((0, top, W, H), fill=(20, 22, 26))
     d.line([(0, top), (W, top)], fill=GRID, width=1)
-    d.rectangle((m, top+16, W-m, top+18), fill=(48, 52, 58))
-    d.rectangle((m, top+16, m+int((W-2*m)*idx/NFRAMES), top+18), fill=CYAN)
-    cn_text(im, d, CAPTIONS[ci], (W//2, top+36), 24, WHITE, anchor="mt")
-    cn_text(im, d, "现场数值求解 · 无预渲染路径", (W//2, top+84), 14, DIMTEXT, anchor="mt")
+    d.rectangle((MARGIN, top+16, W-MARGIN, top+18), fill=(48, 52, 58))
+    d.rectangle((MARGIN, top+16, MARGIN+int((W-2*MARGIN)*idx/NFRAMES), top+18), fill=CYAN)
+    cn_text(im, d, CAPTIONS[ci], (W//2, top+36), 23, WHITE, anchor="mt")
+    cn_text(im, d, "现场数值求解 · 无预渲染路径", (W//2, top+82), 13, DIMTEXT, anchor="mt")
     return im
 
 
 def render_preview():
-    """21 keyframes at 540x675 (half resolution), saved to preview_grid."""
     sim = Sim()
     out = os.path.join(HERE, "preview_grid")
     os.makedirs(out, exist_ok=True)
     for i in range(21):
         idx = int(i*(NFRAMES-1)/20)
         im = render_frame(sim, idx)
-        im.resize((W//2, H//2), Image.LANCZOS).save(os.path.join(out, "k%02d.png" % i))
+        im.resize((540, 675), Image.LANCZOS).save(os.path.join(out, "k%02d.png" % i))
     print("preview frames:", 21)
+
+
+def render_full():
+    ensure_formulas()
+    sim = Sim()
+    import subprocess, imageio_ffmpeg
+    ff = imageio_ffmpeg.get_ffmpeg_exe()
+    out = os.path.join(HERE, "pde_silent.mp4")
+    cmd = [ff, "-y", "-loglevel", "error", "-f", "rawvideo", "-vcodec", "rawvideo",
+           "-s", "%dx%d" % (W, H), "-pix_fmt", "rgb24", "-r", str(FPS), "-i", "-",
+           "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+           "-preset", "veryfast", "-crf", "20", out]
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+    for idx in range(NFRAMES):
+        sim.step(idx/FPS)
+        proc.stdin.write(render_frame(sim, idx).tobytes())
+        if idx % 300 == 0:
+            print("frame", idx)
+    proc.stdin.close(); proc.wait()
+    print("rendered", out)
 
 
 if __name__ == "__main__":
@@ -492,24 +535,4 @@ if __name__ == "__main__":
     if "--preview" in sys.argv:
         render_preview()
     else:
-        sim = Sim()
-        out = os.environ.get("PDE_OUT", os.path.join(HERE, "pde_silent.mp4"))
-        import subprocess, shutil
-        ffmpeg = shutil.which("ffmpeg")
-        if not ffmpeg:
-            try:
-                import imageio_ffmpeg
-                ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-            except Exception:
-                pass
-        cmd = [ffmpeg, "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
-               "-s", "%dx%d" % (W, H), "-r", str(FPS), "-i", "-", "-an",
-               "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", out]
-        p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-        for i in range(NFRAMES):
-            p.stdin.write(render_frame(sim, i).tobytes())
-            if i % 300 == 0:
-                print("frame", i, flush=True)
-        p.stdin.close()
-        p.wait()
-        print("rendered", out)
+        render_full()
