@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Seven PDEs, solved live -- 720x1600 (9:20) 30fps ~70s.
+Seven PDEs, solved live -- 1080x1350 (4:5) 30fps ~70s.
+Matches the vertical 1080x1350 format of the rest of the series.
 Self-contained: numpy numeric solvers + PIL drawing + matplotlib mathtext PNG.
 No LaTeX install, no Manim required.
 """
@@ -15,9 +16,15 @@ import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
 from matplotlib.mathtext import math_to_image
 
-W, H = 720, 1600
+W, H = 1080, 1350
 FPS = 30
 DURATION = 70.0
+PANEL_H = 252
+PANEL_TOP = 112
+PANEL_GAP = 10
+PANEL_MARGIN = 24
+PANEL_GUTTER = 12
+CAPTION_H = 162
 NFRAMES = int(FPS * DURATION)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -238,23 +245,22 @@ def map_color(x, lo, hi, c0, c1):
 
 def panel_base(d, box, title=None):
     x0, y0, x1, y1 = box
-    d.rounded_rectangle(box, radius=8, fill=PANEL_BG, outline=GRID, width=1)
-    d.line([(x0+10, y0+30), (x1-10, y0+30)], fill=GRID, width=1)
+    d.rounded_rectangle(box, radius=9, fill=PANEL_BG, outline=GRID, width=1)
+    d.line([(x0+12, y0+34), (x1-12, y0+34)], fill=GRID, width=1)
 
 
 def draw_formula(d, im, key, box, sub=False):
     x0, y0, x1, y1 = box
     f = formula_img(key, sub=sub)
-    maxw, maxh = (x1-x0-16), (y1-y0-4)
+    maxw, maxh = (x1-x0-20), (y1-y0-4)
     r = min(maxw/f.width, maxh/f.height, 1.0)
     f = f.resize((max(1, int(f.width*r)), max(1, int(f.height*r))), Image.LANCZOS)
     im.paste(f, (int((x0+x1-f.width)/2), int(y0+2)), f)
     return f.height
 
 
-def heat_panel(im, d, box, sim):
+def heat_panel(im, d, box, sim, gy0):
     x0, y0, x1, y1 = box
-    gy0 = y0+56
     u = sim.heat.u
     rgb = map_color(u, 0.0, 0.95, (28, 42, 104), (244, 196, 76))
     big = Image.fromarray(rgb, "RGB").resize((x1-x0-16, y1-gy0-8), Image.BILINEAR)
@@ -267,9 +273,8 @@ def heat_panel(im, d, box, sim):
         d.line([(cbx, gy0+i*2), (cbx+5, gy0+i*2)], fill=c)
 
 
-def wave_panel(im, d, box, sim, t):
+def wave_panel(im, d, box, sim, t, gy0):
     x0, y0, x1, y1 = box
-    gy0 = y0+56
     lane = (y1-gy0)//3
     x, ul, ur, ut = sim.wave.field(t)
     def plot(vals, cy, col):
@@ -280,12 +285,11 @@ def wave_panel(im, d, box, sim, t):
         cy = gy0 + lane*k + lane//2 + 6
         d.line([(x0+10, cy), (x1-10, cy)], fill=(44, 48, 54), width=1)
         plot(vals, cy, col)
-        d.text((x0+14, cy-lane//2+6), lab, fill=col)
+        en_label(d, (x0+14, cy-lane//2+5), lab, size=13, fill=col)
 
 
-def maxwell_panel(im, d, box, sim, t):
+def maxwell_panel(im, d, box, sim, t, gy0):
     x0, y0, x1, y1 = box
-    gy0 = y0+54
     cx, cy = (x0+x1)//2, (gy0+y1)//2
     rx, ry = (x1-x0)//2-20, (y1-gy0)//2-12
     X, Y = sim.maxwell.field(t)
@@ -296,12 +300,11 @@ def maxwell_panel(im, d, box, sim, t):
         d.line(pts, fill=col, width=1)
     d.ellipse((cx-5, cy-5, cx+5, cy+5), fill=RED)
     d.ellipse((cx+8, cy-5, cx+18, cy+5), fill=CYAN)
-    d.text((x0+12, y1-20), "E  /  B  fields", fill=DIMTEXT)
+    en_label(d, (x0+12, y1-22), "E / B  FIELD LINES", size=12)
 
 
-def navier_panel(im, d, box, sim, t):
+def navier_panel(im, d, box, sim, t, gy0):
     x0, y0, x1, y1 = box
-    gy0 = y0+54
     cx, cy = (x0+x1)//2, (gy0+y1)//2
     sx = (x1-x0)/2.2; sy = (y1-gy0)/1.7
     # cylinder
@@ -313,13 +316,15 @@ def navier_panel(im, d, box, sim, t):
         if x0+6 < xx < x1-6 and gy0 < yy < y1-6:
             a = int(90 + 130*min(age, 1))
             col = (a, int(a*0.78), int(a*0.48))
-            d.ellipse((xx-1.3, yy-1.3, xx+1.3, yy+1.3), fill=col)
-    d.text((x0+12, y1-20), "vortex shedding", fill=DIMTEXT)
+            uv, vv = sim.navier.vel(px, py, t)
+            d.line([(xx-uv*5.5, yy-vv*5.5), (xx, yy)],
+                   fill=(a//3, int(a*0.26), int(a*0.16)), width=1)
+            d.ellipse((xx-1.9, yy-1.9, xx+1.9, yy+1.9), fill=col)
+    en_label(d, (x0+12, y1-22), "VORTEX SHEDDING", size=12)
 
 
-def psi_panel(im, d, box, t):
+def psi_panel(im, d, box, t, gy0):
     x0, y0, x1, y1 = box
-    gy0 = y0+54
     mid = (gy0+y1)//2
     xs = np.linspace(0, 1, 220)
     s = 0.16 + 0.045*t
@@ -336,11 +341,10 @@ def psi_panel(im, d, box, t):
     d.line(dn, fill=(90, 96, 106), width=1)
 
 
-def beam_panel(im, d, box, sim, t):
+def beam_panel(im, d, box, sim, t, gy0):
     x0, y0, x1, y1 = box
-    gy0 = y0+54
-    cx, cy = x0+34, (gy0+y1)//2
-    L = x1-x0-70
+    cx, cy = x0+42, (gy0+y1)//2
+    L = x1-x0-84
     x, y = sim.beam.shape(t)
     # wall
     d.rectangle((cx-8, gy0+16, cx, y1-30), fill=(70, 72, 76))
@@ -356,25 +360,23 @@ def beam_panel(im, d, box, sim, t):
                fill=(120, 92, 56), width=1)
 
 
-def rd_panel(im, d, box, sim):
+def rd_panel(im, d, box, sim, gy0):
     x0, y0, x1, y1 = box
-    gy0 = y0+54
     v = sim.rd.v
     rgb = map_color(v, 0.02, 0.34, (52, 30, 24), (246, 158, 70))
     big = Image.fromarray(rgb, "RGB").resize((x1-x0-16, y1-gy0-8), Image.BILINEAR)
     im.paste(big, (x0+8, gy0))
 
 
-def schrod_panel(im, d, box, sim, t):
+def schrod_panel(im, d, box, sim, t, gy0):
     x0, y0, x1, y1 = box
-    gy0 = y0+54
     cx, cy = (x0+x1)//2, (gy0+y1)//2
-    rx, ry = (x1-x0)/2-18, (y1-gy0)/2-14
+    rx, ry = (x1-x0)/2-22, (y1-gy0)/2-8
     X, Y, Z = sim.schrod.surface(t)
     def proj(i, j):
         xx, yy, zz = X[i, j], Y[i, j], Z[i, j]
-        px = cx + (xx-yy)*0.66*rx
-        py = cy + (xx+yy)*0.32*ry - zz*0.62*ry
+        px = cx + (xx-yy)*0.46*rx
+        py = cy + (xx+yy)*0.22*ry - zz*0.42*ry
         return px, py
     n = X.shape[0]
     for i in range(0, n, 3):
@@ -408,6 +410,10 @@ def cn_text(im, d, text, xy, size, fill, anchor=None):
     d.text(xy, text, font=f, fill=fill, anchor=anchor)
 
 
+def en_label(d, xy, text, size=13, fill=DIMTEXT, anchor=None):
+    d.text(xy, text, font=ImageFont.truetype(FONT_EN, size), fill=fill, anchor=anchor)
+
+
 def render_frame(sim, idx):
     t = idx / FPS
     sim.step(t)
@@ -415,19 +421,20 @@ def render_frame(sim, idx):
     d = ImageDraw.Draw(im)
 
     # ---- title (bilingual, no cursor) ----
-    cn_text(im, d, "偏微分方程 · 现场求解", (W//2, 26), 30, WHITE, anchor="mt")
-    d.text((W//2, 70), "P D E   ·   S E V E N   E Q U A T I O N S   I N   M O T I O N",
-           font=ImageFont.truetype(FONT_EN, 12), fill=DIMTEXT, anchor="mt")
-    d.text((W-16, 22), "AIMaker-Lab", font=ImageFont.truetype(FONT_EN, 11),
-           fill=(120, 126, 136), anchor="rt")
+    cn_text(im, d, "偏微分方程 · 现场求解", (W//2, 42), 36, WHITE, anchor="mt")
+    en_label(d, (W//2, 88),
+             "P D E   ·   S E V E N   E Q U A T I O N S   I N   M O T I O N",
+             size=13, fill=DIMTEXT, anchor="mt")
+    en_label(d, (W-24, 44), "AIMaker-Lab", size=12,
+             fill=(120, 126, 136), anchor="rt")
 
-    # ---- panel layout ----
-    m, g = 18, 10
+    # ---- panel layout: 2 columns x 4 rows, tuned for 1080x1350 ----
+    m, g = PANEL_MARGIN, PANEL_GUTTER
     pw = (W - 2*m - g)//2
-    ph = 312
-    ys = [104, 426, 748, 1070]
+    ph = PANEL_H
+    ys = [PANEL_TOP + r*(ph + PANEL_GAP) for r in range(4)]
     boxes = []
-    for r, y in enumerate(ys):
+    for y in ys:
         for c in range(2):
             x = m + c*(pw+g)
             boxes.append((x, y, x+pw, y+ph))
@@ -440,42 +447,42 @@ def render_frame(sim, idx):
               "beam": beam_panel, "rd": rd_panel}
 
     for key, box in zip(keys, boxes):
+        y0 = box[1]
+        has_sub = key in subkeys
         panel_base(d, box)
-        draw_formula(d, im, key, (box[0], box[1], box[2], box[1]+30))
-        if key in subkeys:
-            draw_formula(d, im, key, (box[0], box[1]+30, box[2], box[1]+52), sub=True)
-            # draw_formula resolves FORMULA_SUB[key] internally when sub=True
-        if key == "psi":
-            psi_panel(im, d, box, t)
-        elif key == "schrod":
-            schrod_panel(im, d, box, sim, t)
-        elif key == "beam":
-            beam_panel(im, d, box, sim, t)
+        draw_formula(d, im, key, (box[0], y0, box[2], y0+34))
+        if has_sub:
+            draw_formula(d, im, key, (box[0], y0+34, box[2], y0+56), sub=True)
+        gy0 = y0 + (64 if has_sub else 44)
+        if key in ("heat", "rd"):
+            panels[key](im, d, box, sim, gy0)
+        elif key in ("psi",):
+            psi_panel(im, d, box, t, gy0)
         else:
-            panels[key](im, d, box, sim, t) if key not in ("heat", "rd") else panels[key](im, d, box, sim)
+            panels[key](im, d, box, sim, t, gy0)
 
     # ---- caption bar ----
     seg = DURATION/len(CAPTIONS)
     ci = min(int(t/seg), len(CAPTIONS)-1)
-    d.rectangle((0, H-118, W, H), fill=(20, 22, 26))
-    d.line([(0, H-118), (W, H-118)], fill=GRID, width=1)
-    # progress
-    d.rectangle((m, H-104, W-m, H-102), fill=(48, 52, 58))
-    d.rectangle((m, H-104, m+int((W-2*m)*idx/NFRAMES), H-102), fill=CYAN)
-    cn_text(im, d, CAPTIONS[ci], (W//2, H-84), 20, WHITE, anchor="mt")
-    cn_text(im, d, "现场数值求解 · 无预渲染路径", (W//2, H-46), 13, DIMTEXT, anchor="mt")
+    top = H - CAPTION_H
+    d.rectangle((0, top, W, H), fill=(20, 22, 26))
+    d.line([(0, top), (W, top)], fill=GRID, width=1)
+    d.rectangle((m, top+16, W-m, top+18), fill=(48, 52, 58))
+    d.rectangle((m, top+16, m+int((W-2*m)*idx/NFRAMES), top+18), fill=CYAN)
+    cn_text(im, d, CAPTIONS[ci], (W//2, top+36), 24, WHITE, anchor="mt")
+    cn_text(im, d, "现场数值求解 · 无预渲染路径", (W//2, top+84), 14, DIMTEXT, anchor="mt")
     return im
 
 
 def render_preview():
-    """21 keyframes at 360x800, saved to preview_grid for inspection."""
+    """21 keyframes at 540x675 (half resolution), saved to preview_grid."""
     sim = Sim()
     out = os.path.join(HERE, "preview_grid")
     os.makedirs(out, exist_ok=True)
     for i in range(21):
         idx = int(i*(NFRAMES-1)/20)
         im = render_frame(sim, idx)
-        im.resize((360, 800), Image.LANCZOS).save(os.path.join(out, "k%02d.png" % i))
+        im.resize((W//2, H//2), Image.LANCZOS).save(os.path.join(out, "k%02d.png" % i))
     print("preview frames:", 21)
 
 
