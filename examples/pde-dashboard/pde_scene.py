@@ -59,7 +59,7 @@ FORMULAS = {
     "navier": r"$\rho\left(\partial_t\mathbf{u}+\mathbf{u}\cdot\nabla\mathbf{u}\right)=-\nabla p+\mu\nabla^{2}\mathbf{u}$",
     "schrod": r"$i\hbar\frac{\partial\psi}{\partial t}=-\frac{\hbar^{2}}{2m}\nabla^{2}\psi$",
     "psi":    r"$|\psi|^{2}\ /\ \int|\psi|^{2}dx=1$",
-    "beam":   r"$\frac{\partial^{2}u}{\partial t^{2}}+\frac{EI}{\rho A}\frac{\partial^{4}u}{\partial x^{4}}=0$",
+    "beam":   r"$\omega_2/\omega_1=(\beta_2/\beta_1)^2=6.267$",
     "rd":     r"$\partial_tu=D_u\nabla^{2}u-uv^{2}+F(1-u)$",
 }
 FORMULA_SUB = {
@@ -384,41 +384,76 @@ def psi_panel(im, d, box, t, gy0):
 
 
 def beam_panel(im, d, box, sim, t, gy0):
-    """3D solid cantilever beam with mesh texture, fixed wall at left."""
+    """Solid 3D rectangular cantilever box beam: orange top, gridded grey faces, fixed wall."""
     x0, y0, x1, y1 = box
-    ax0, ax1 = x0+46, x1-34
+    ax0, ax1 = x0+44, x1-38
     cy = (gy0+y1)//2
     L = ax1-ax0
     x, y = sim.beam.shape(t)
-    depth = min(30, (y1-gy0)*0.22)
-    shear = L*0.045
-    def surf(xi, yi, f):
-        return (ax0+xi*L+f*shear, cy-yi*(y1-gy0)*0.62+(f-0.5)*depth)
-    # fixed wall
-    d.rectangle((ax0-14, gy0+22, ax0, y1-30), fill=(84, 86, 90))
-    for hy in range(gy0+22, y1-30, 11):
-        d.line([(ax0-14, hy), (ax0, hy+8)], fill=(130, 134, 140), width=1)
-    # ghost poses
-    for dt, a in ((0.55, 96), (0.28, 126)):
+    amp = (y1-gy0)*0.50
+    depth = min(24, (y1-gy0)*0.18)
+    dx, dy = max(10, int(L*0.032)), max(6, int(depth*0.6))
+    half = depth/2
+
+    def cl(xi):
+        return cy - np.interp(xi, x, y)*amp
+
+    def verts(xi):
+        yy = cl(xi); px = ax0 + xi*L
+        return ((px, yy-half), (px, yy+half),
+                (px+dx, yy-half-dy), (px+dx, yy+half-dy))
+
+    # fixed wall with hatching
+    d.rectangle((ax0-16, gy0+18, ax0+2, y1-26), fill=(88, 90, 94))
+    for hy in range(gy0+18, y1-26, 10):
+        d.line([(ax0-16, hy), (ax0+2, hy+7)], fill=(134, 138, 144), width=1)
+
+    # ghost bending poses (motion trail)
+    for dt, a in ((0.55, 74), (0.28, 104)):
         _, yh = sim.beam.shape(t-dt)
-        d.line([surf(xi, yi, 0.5) for xi, yi in zip(x, yh)],
+        d.line([(ax0+xi*L, cy-np.interp(xi, x, yh)*amp) for xi in x],
                fill=(a, int(a*0.74), int(a*0.42)), width=2)
-    # 3D beam: front face + top face
-    front_top = [surf(xi, yi, 0) for xi, yi in zip(x, y)]
-    front_bot = [surf(xi, yi, 1) for xi, yi in zip(x, y)][::-1]
-    d.polygon(front_top+front_bot, fill=(146, 150, 158))
-    d.line(front_top, fill=(196, 200, 208), width=2)
-    d.line(front_bot[::-1], fill=(96, 100, 108), width=2)
-    # mesh texture on front face
-    for xi in np.linspace(0, 1, 15):
-        yi = np.interp(xi, x, y)
-        d.line([surf(xi, yi, 0), surf(xi, yi, 1)], fill=(108, 112, 120), width=1)
-    for f in (0.3, 0.6):
-        d.line([surf(xi, yi, f) for xi, yi in zip(x, y)], fill=(176, 180, 188), width=1)
-    # tip
-    txx, tyy = surf(1, y[-1], 0.5)
-    d.ellipse((txx-4, tyy-4, txx+4, tyy+4), fill=(236, 206, 132))
-    cn_text(im, d, "悬臂梁 · 一阶振型", (x0+14, y1-26), 14, DIMTEXT)
+
+    # TOP face: orange near clamp fading to light grey toward tip, drawn as thin quads
+    ns = 44
+    for i in range(ns):
+        xi0, xi1 = i/ns, (i+1)/ns
+        ft0, _, bt0, _ = verts(xi0)
+        ft1, _, bt1, _ = verts(xi1)
+        f = xi0
+        if f < 0.42:
+            k = 1 - f/0.42
+            col = (int(162+80*k), int(160-14*k), int(162-70*k))
+        else:
+            k = (f-0.42)/0.58
+            col = (int(162+34*k), int(158+38*k), int(160+30*k))
+        d.polygon([ft0, ft1, bt1, bt0], fill=col)
+    # top-face cross-grid
+    for xi in np.linspace(0, 1, 20):
+        ft, _, bt, _ = verts(xi)
+        d.line([ft, bt], fill=(228, 214, 196), width=1)
+
+    # FRONT face: cool grey with fine grid
+    ft_list = [verts(xi)[0] for xi in x]
+    fb_list = [verts(xi)[1] for xi in x]
+    d.polygon(ft_list + fb_list[::-1], fill=(170, 174, 182))
+    for xi in np.linspace(0, 1, 20):
+        ft, fb, _, _ = verts(xi)
+        d.line([ft, fb], fill=(112, 116, 124), width=1)
+    for frac in (0.33, 0.66):
+        d.line([(ax0+xi*L, cl(xi)-half+frac*depth) for xi in x],
+               fill=(126, 130, 138), width=1)
+
+    # TIP end face
+    ft, fb, bt, bb = verts(1)
+    d.polygon([ft, bt, bb, fb], fill=(124, 128, 136))
+    d.line([ft, bt], fill=(206, 210, 216), width=1)
+
+    # outlines
+    d.line(ft_list, fill=(232, 230, 224), width=1)
+    d.line(fb_list, fill=(104, 108, 116), width=1)
+
+    cn_text(im, d, "悬臂梁 · 模态振动", (x1-14, y1-18), 13, DIMTEXT, anchor="ra")
 
 
 def rd_panel(im, d, box, sim, gy0):
