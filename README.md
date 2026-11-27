@@ -4,7 +4,7 @@
 
 > Python/Manim math animations: one new visualization every day, rendered offline without LaTeX, each with its own non-looping synthesized score.
 
-## 已收录作品（17）
+## 已收录作品（18）
 
 主表只做索引，**每个案例的详细说明（公式链、分镜、技术要点、运行命令）都在各自的 `examples/<主题>/README.md` 里**，新增案例时只加一行，主 README 不会越写越长。
 
@@ -27,6 +27,7 @@
 | 15 | 拉普拉斯变换 | `f(t)e^(−st)` 的面积累积成 `F(s)` 与收敛域 | [README](examples/laplace-transform/README.md) |
 | 16 | 高斯散度定理 | 六个面的通量之和 = 内部散度体积分 | [README](examples/divergence-theorem/README.md) |
 | 17 | 雅可比行列式与换元 | 网格弯成极坐标，`J=r` 给出局部面积放大率 | [README](examples/jacobian-determinant/README.md) |
+| 18 | 拉格朗日中值定理 | 平移割线至与曲线相切，`f'(ξ)=k` 给出平均变化率 | [README](examples/mean-value-theorem/README.md) |
 
 后续会持续加入更多数学可视化主题（线性代数、微分方程、离散数学、组合数学等），每日一篇。
 
