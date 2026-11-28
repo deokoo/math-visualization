@@ -78,7 +78,7 @@ def _render_formula(tex, path, size):
 def ensure_formulas():
     for key, tex in FORMULAS.items():
         if not os.path.exists(_fname(key)):
-            _render_formula(tex, _fname(key), 23)
+            _render_formula(tex, _fname(key), 28)
 
 
 def formula_img(key):
@@ -421,39 +421,35 @@ def predict_panel(im, d, box, sim, t, gy0):
 
 
 def closedloop_panel(im, d, box, sim, t, gy0):
-    """Setpoint tracking + control action after disturbances."""
+    """Full 70s setpoint tracking: disturbances push density up, controller brings it back."""
     x0, y0, x1, y1 = box
     idx = int(t*FPS)
-    xa, xb = x0+12, x1-12
-    ya, yb = gy0+10, y1-52
-    mp = frame_axes(d, xa, ya, xb, yb, 1.6, 3.4)
-    L = min(idx+1, 480)
-    s0 = idx-L+1
-    xs = np.linspace(xa, xb, L)
-    # setpoint
+    xa, xb = x0+14, x1-14
+    ya, yb = gy0+12, y1-58
+    mp = frame_axes(d, xa, ya, xb, yb, 2.40, 3.05, ngrid=5)
+    # full 70s timeline always shown so stability is obvious in any frame
+    xs = xa + (xb-xa)*(np.arange(sim.n)/(DURATION*FPS))
+    # setpoint dashed reference
     yy_ref = mp(2.55)
-    d.line([(xa, yy_ref), (xb, yy_ref)], fill=(150, 156, 166), width=1)
-    for xx in np.linspace(xa, xb, 12):
-        d.line([(xx, yy_ref-3), (xx, yy_ref+3)], fill=(150, 156, 166), width=1)
-    # actual response
-    polyline(d, [(xs[i], mp(sim.actual[s0+i])) for i in range(L)], CYAN, 2)
-    # disturbance markers
+    for xx in np.linspace(xa, xb, 40):
+        d.line([(xx, yy_ref), (xx+5, yy_ref)], fill=(150, 156, 166), width=1)
+    # actual density response (full trace)
+    polyline(d, [(xs[i], mp(sim.actual[i])) for i in range(sim.n)], CYAN, 2)
+    # disturbance markers at 22s and 48s (both always visible)
     for td in (22.0, 48.0):
-        if t >= td - 1 and td <= 70:
-            xx = xa + (xb-xa)*td/70.0
-            if xx <= xb:
-                d.line([(xx, ya), (xx, yb)], fill=(90, 60, 60), width=1)
-                en_label(d, (xx+3, ya+3), "dist", 9, RED)
-    # control action strip
-    cy0, cy1 = y1-44, y1-16
-    d.line([(xa, (cy0+cy1)//2), (xb, (cy0+cy1)//2)], fill=(48, 52, 58), width=1)
-    xs2 = np.linspace(xa, xb, L)
-    for i in range(0, L, 3):
-        v = sim.ctrl[s0+i]
-        h = max(-10, min(10, int(v*8)))
-        d.line([(xs2[i], (cy0+cy1)//2), (xs2[i], (cy0+cy1)//2 - h)],
-               fill=GOLD, width=2)
-    en_label(d, (x0+12, y1-13), "CONTROL ACTION u_k", 9, DIMTEXT)
+        dx = xa + (xb-xa)*td/DURATION
+        d.line([(dx, ya), (dx, yb)], fill=(104, 62, 62), width=1)
+        d.ellipse((dx-3, mp(2.55)-3, dx+3, mp(2.55)+3), fill=RED)
+    # moving cursor marks the current simulation time
+    cx = xa + (xb-xa)*(idx/float(sim.n-1))
+    d.line([(cx, ya), (cx, yb)], fill=(92, 100, 110), width=1)
+    d.ellipse((cx-3, mp(sim.actual[idx])-3, cx+3, mp(sim.actual[idx])+3), fill=CYAN)
+    # Chinese labels: who is who + what happened
+    cn_text(im, d, "青线 = 实际密度   灰虚线 = 设定点 2.55", (x0+14, y1-50), 14, DIMTEXT)
+    cn_text(im, d, "两次扰动后自动压回设定点并稳定", (x0+14, y1-28), 14, GREEN)
+    # current deviation readout
+    dev = sim.actual[idx]-2.55
+    en_label(d, (x1-14, ya+4), "dev=%+.3f" % dev, 11, DIMTEXT, anchor="rt")
 
 
 def perf_panel(im, d, box, sim, t, gy0):
@@ -563,8 +559,8 @@ def render_frame(sim, idx):
         x0 = MARGIN + col*(pw+GUTTER)
         box = (x0, y0, x0+pw, y0+rh)
         panel_base(d, box)
-        draw_formula(d, im, key, (x0, y0, x0+pw, y0+46))
-        gy0 = y0 + 52
+        draw_formula(d, im, key, (x0, y0, x0+pw, y0+64))
+        gy0 = y0 + 70
         painter(im, d, box, sim, t, gy0)
 
     seg = DURATION/len(CAPTIONS)
@@ -598,7 +594,7 @@ def render_full():
     cmd = [os.environ.get("FFMPEG", "ffmpeg"), "-y", "-loglevel", "error",
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "%dx%d" % (W, H),
            "-r", str(FPS), "-i", "-", "-an", "-c:v", "libx264",
-           "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", out]
+           "-preset", "medium", "-crf", "14", "-pix_fmt", "yuv420p", out]
     import subprocess
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     for i in range(NFRAMES):
